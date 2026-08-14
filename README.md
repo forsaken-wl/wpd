@@ -51,9 +51,18 @@ wpd stack
 wpd filmstrip
 wpd roots
 wpd theme light
+wpd collections
+wpd random
+wpd next landscapes
+wpd landscapes previous
+wpd landscapes light
 ```
 
 The daemon restores its last valid wallpaper. It uses one background layer-shell surface per monitor and is event-driven while idle.
+
+WPD 0.6.1 is the Actually Useful™ update. Directories below `papers/` are collections and are scanned recursively by the pickers. `random`, `next`, and `previous` work across the whole library or one named collection, remember the currently applied paper across CLI runs, and always use `fill`. A collection can carry theme behavior in its own `.wpd.conf`; `wpd landscapes light` writes that metadata, and selecting through `wpd next landscapes` or `wpd landscapes random` switches Matugen to the collection's scheme before applying the paper. `wpd collections` lists folders and their behavior. `examples/collection.conf` documents the portable metadata format.
+
+The experimental WMD (Wall Movie Daemon) live-wallpaper work is kept on the separate `wmd` Git branch based on this release. WPD remains a still-wallpaper daemon.
 
 Switcher, carousel, and 3d apply wallpapers using `fill` by default. `wpd 3d` replaces the former concept experiments with a perspective-mapped carousel: cards recede, compress toward their far edge, scale by depth, overlap back-to-front, wrap around the library, and retain the selected wallpaper title. It supports mouse selection, Left/Right or `h`/`j`, Enter, scrolling, and Escape.
 

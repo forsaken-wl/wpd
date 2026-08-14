@@ -4,6 +4,7 @@
 #include "ipc.h"
 #include "image.h"
 #include "transitions.h"
+#include "collection.h"
 #include "gui/switcher.h"
 #include "gui/carousel.h"
 #include "gui/three_d.h"
@@ -26,6 +27,10 @@ static void help(void) {
           "  wpd layouts\n"
           "  wpd theme [light|dark]\n"
           "  wpd transition [mode|list]\n"
+          "  wpd collections\n"
+          "  wpd random|next|previous [COLLECTION]\n"
+          "  wpd COLLECTION light|dark\n"
+          "  wpd COLLECTION random|next|previous\n"
           "  wpd --alpha\n"
           "  wpd help\n\n"
           "Options:\n"
@@ -139,6 +144,23 @@ int main(int argc, char **argv) {
     } else {
       g_printerr("wpd: unknown transition\nTry 'wpd transition list'.\n"); result=2;
     }
+  } else if (!g_strcmp0(argv[1],"collections")) {
+    if(argc!=2)result=2;
+    else {wpd_collections_print(config);result=0;}
+  } else if (!g_strcmp0(argv[1],"random") || !g_strcmp0(argv[1],"next") ||
+             !g_strcmp0(argv[1],"previous")) {
+    if(argc<2||argc>3)result=2;
+    else result=wpd_collection_apply(config,argc==3?argv[2]:NULL,argv[1]);
+  } else if (argc==3 && (!g_strcmp0(argv[2],"random") ||
+                         !g_strcmp0(argv[2],"next") ||
+                         !g_strcmp0(argv[2],"previous"))) {
+    result=wpd_collection_apply(config,argv[1],argv[2]);
+  } else if (argc==3 && (!g_strcmp0(argv[2],"light") ||
+                         !g_strcmp0(argv[2],"dark"))) {
+    GError *error=NULL;
+    if(wpd_collection_set_theme(config,argv[1],argv[2],&error)) {
+      g_print("collection %s: %s\n",argv[1],argv[2]);result=0;
+    } else {g_printerr("wpd: %s\n",error->message);g_clear_error(&error);result=1;}
   } else if (!g_strcmp0(argv[1],"layouts")) {
     if (argc!=2) result=2;
     else { g_print("switcher carousel 3d grid stack filmstrip roots\n"); result=0; }

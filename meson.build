@@ -1,4 +1,4 @@
-project('wpd', 'c', version: '1.1.2', default_options: ['c_std=c11', 'warning_level=2'])
+project('wpd', 'c', version: '0.6.1', default_options: ['c_std=c11', 'warning_level=2'])
 
 cc = meson.get_compiler('c')
 gtk = dependency('gtk+-3.0', version: '>=3.24')
@@ -12,7 +12,7 @@ configure_file(output: 'wpd-build-config.h', configuration: conf)
 
 sources = files(
   'src/main.c', 'src/config.c', 'src/ipc.c', 'src/image.c',
-  'src/wallpaper.c', 'src/transitions.c', 'src/renderer.c', 'src/daemon.c',
+  'src/wallpaper.c', 'src/collection.c', 'src/transitions.c', 'src/renderer.c', 'src/daemon.c',
   'src/gui/common.c', 'src/gui/switcher.c', 'src/gui/carousel.c',
   'src/gui/three_d.c', 'src/gui/layouts.c', 'src/gui/alpha.c',
 )
@@ -24,3 +24,4 @@ executable('wpd', sources,
 )
 
 install_data('examples/switcher.conf', install_dir: get_option('datadir') / 'wpd')
+install_data('examples/collection.conf', install_dir: get_option('datadir') / 'wpd')
