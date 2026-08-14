@@ -83,6 +83,24 @@ gboolean wpd_theme_set(const WpdConfig *config, const gchar *theme, GError **err
   return result;
 }
 
+gboolean wpd_transition_set(const WpdConfig *config,const gchar *transition,GError **error) {
+  if (g_mkdir_with_parents(config->config_dir,0700)<0) {
+    g_set_error(error,G_FILE_ERROR,g_file_error_from_errno(errno),
+                "cannot create config directory"); return FALSE;
+  }
+  gchar *data=NULL; g_file_get_contents(config->theme_file,&data,NULL,NULL);
+  gchar **lines=g_strsplit(data?data:"","\n",-1); GString *contents=g_string_new(NULL);
+  gboolean found=FALSE;
+  for (guint i=0;lines[i];i++) {
+    if (g_str_has_prefix(g_strstrip(lines[i]),"transition=")) {
+      g_string_append_printf(contents,"transition=%s\n",transition); found=TRUE;
+    } else if (*lines[i]) g_string_append_printf(contents,"%s\n",lines[i]);
+  }
+  if (!found) g_string_append_printf(contents,"transition=%s\n",transition);
+  gboolean result=g_file_set_contents(config->theme_file,contents->str,-1,error);
+  g_string_free(contents,TRUE); g_strfreev(lines); g_free(data); return result;
+}
+
 static gint sane_int(const gchar *value, gint low, gint high, gint fallback) {
   gchar *end = NULL;
   gint64 number = g_ascii_strtoll(value, &end, 10);

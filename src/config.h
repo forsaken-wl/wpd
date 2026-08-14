@@ -19,3 +19,4 @@ void wpd_config_free(WpdConfig *c);
 void wpd_switcher_config_load(const WpdConfig *c, SwitcherConfig *out);
 const gchar *wpd_theme_get(const WpdConfig *c);
 gboolean wpd_theme_set(const WpdConfig *c, const gchar *theme, GError **error);
+gboolean wpd_transition_set(const WpdConfig *c, const gchar *transition, GError **error);

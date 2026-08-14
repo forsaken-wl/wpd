@@ -3,6 +3,7 @@
 #include "daemon.h"
 #include "ipc.h"
 #include "image.h"
+#include "transitions.h"
 #include "gui/switcher.h"
 #include "gui/carousel.h"
 #include "gui/three_d.h"
@@ -17,6 +18,7 @@ static void help(void) {
           "  wpd carousel\n"
           "  wpd 3d\n"
           "  wpd theme [light|dark]\n"
+          "  wpd transition [mode|list]\n"
           "  wpd help\n\n"
           "Options:\n"
           "  -h, --help     Show this help\n"
@@ -97,6 +99,28 @@ int main(int argc, char **argv) {
       }
     } else {
       g_printerr("usage: wpd theme [light|dark]\n"); result=2;
+    }
+  } else if (!g_strcmp0(argv[1],"transition")) {
+    if (argc==2) {
+      g_print("%s\n",config->transition); result=0;
+    } else if (argc==3 && !g_strcmp0(argv[2],"list")) {
+      gsize count; const gchar *const *names=wpd_transition_names(&count);
+      for (gsize i=0;i<count;i++) g_print("%s%s",names[i],i+1<count?" ":"\n");
+      result=0;
+    } else if (argc==3 && wpd_transition_valid(argv[2])) {
+      GError *error=NULL;
+      if (!wpd_transition_set(config,argv[2],&error)) {
+        g_printerr("wpd: %s\n",error->message); g_clear_error(&error); result=1;
+      } else {
+        gchar *request=g_strdup_printf("TRANSITION\t%s",argv[2]), *reply=NULL;
+        GError *ipc_error=NULL;
+        if (config->socket_path)
+          wpd_ipc_send(config->socket_path,request,&reply,&ipc_error);
+        g_clear_error(&ipc_error); g_free(reply); g_free(request);
+        g_print("transition: %s\n",argv[2]); result=0;
+      }
+    } else {
+      g_printerr("wpd: unknown transition\nTry 'wpd transition list'.\n"); result=2;
     }
   } else if (!g_strcmp0(argv[1], "switcher") || !g_strcmp0(argv[1], "carousel") ||
              !g_strcmp0(argv[1], "3d")) {

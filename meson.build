@@ -1,4 +1,4 @@
-project('wpd', 'c', version: '0.4.9', default_options: ['c_std=c11', 'warning_level=2'])
+project('wpd', 'c', version: '0.5.0', default_options: ['c_std=c11', 'warning_level=2'])
 
 cc = meson.get_compiler('c')
 gtk = dependency('gtk+-3.0', version: '>=3.24')

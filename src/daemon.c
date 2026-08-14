@@ -195,6 +195,12 @@ static void run_matugen(WpdConfig *c, const gchar *path) {
 static gchar *handle(const gchar *request, gpointer data) {
   Daemon *d = data;
   gchar **v = g_strsplit(request, "\t", 4);
+  if (!g_strcmp0(v[0],"PING")) { g_strfreev(v); return g_strdup("OK"); }
+  if (!g_strcmp0(v[0],"TRANSITION") && v[1]) {
+    if (!wpd_transition_valid(v[1])) { g_strfreev(v); return g_strdup("ERR bad transition"); }
+    g_free(d->c->transition); d->c->transition=g_strdup(v[1]);
+    g_strfreev(v); return g_strdup("OK");
+  }
   if (g_strcmp0(v[0], "IMAGE") || !v[1] || !v[2]) {
     g_strfreev(v);
     return g_strdup("ERR bad command");
