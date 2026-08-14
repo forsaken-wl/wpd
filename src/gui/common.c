@@ -2,6 +2,7 @@
 #include "../image.h"
 #include "../ipc.h"
 #include "../wallpaper.h"
+#include "../collection.h"
 #include <gtk-layer-shell.h>
 #include <gtk/gtk.h>
 #include <glib/gstdio.h>
@@ -9,7 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct { gint refs; gchar *path; cairo_surface_t *thumb; } Item;
+typedef struct { gint refs; gchar *path; cairo_surface_t *thumb; gboolean directory; } Item;
 typedef struct {
   WpdConfig *config;
   WpdGuiKind kind;
@@ -21,6 +22,7 @@ typedef struct {
   guint animation_timer;
   gint64 animation_last_frame;
   double animation_offset, animation_velocity;
+  gchar *browse_dir;
 } Ui;
 typedef struct { gchar *path, *cache; Item *item; } ThumbJob;
 typedef struct { gint index; double position; } RenderEntry;
@@ -39,6 +41,13 @@ static gint render_entry_compare(gconstpointer a, gconstpointer b) {
 static Item *item_ref(Item *item) {
   g_atomic_int_inc(&item->refs);
   return item;
+}
+
+static gint item_compare(gconstpointer left,gconstpointer right) {
+  const Item *a=*(Item *const *)left,*b=*(Item *const *)right;
+  if (a->directory!=b->directory) return a->directory?-1:1;
+  gchar *an=g_path_get_basename(a->path),*bn=g_path_get_basename(b->path);
+  gint result=g_utf8_collate(an,bn);g_free(an);g_free(bn);return result;
 }
 
 static void item_unref(gpointer data) {
@@ -104,9 +113,43 @@ static void request_thumb(Ui *ui, Item *item) {
   g_object_unref(task);
 }
 
+static void load_switcher_directory(Ui *ui,const gchar *directory) {
+  if (ui->animation_timer) {g_source_remove(ui->animation_timer);ui->animation_timer=0;}
+  ui->animation_offset=ui->animation_velocity=0;ui->selected=0;ui->hovered=-1;
+  g_ptr_array_set_size(ui->items,0);
+  GDir *dir=g_dir_open(directory,0,NULL);
+  if (dir) {
+    const gchar *name;
+    while ((name=g_dir_read_name(dir))) {
+      gchar *path=g_build_filename(directory,name,NULL);
+      gboolean is_dir=g_file_test(path,G_FILE_TEST_IS_DIR)&&
+                       !g_file_test(path,G_FILE_TEST_IS_SYMLINK);
+      if (is_dir || (g_file_test(path,G_FILE_TEST_IS_REGULAR)&&
+                     wpd_image_extension_supported(name))) {
+        Item *item=g_new0(Item,1);item->refs=1;item->path=path;item->directory=is_dir;
+        g_ptr_array_add(ui->items,item);
+      } else g_free(path);
+    }
+    g_dir_close(dir);
+  }
+  g_ptr_array_sort(ui->items,item_compare);
+  g_free(ui->browse_dir);ui->browse_dir=g_strdup(directory);
+  for (guint i=0;i<ui->items->len;i++) {
+    Item *item=g_ptr_array_index(ui->items,i);
+    if (!item->directory) request_thumb(ui,item);
+  }
+  gtk_widget_queue_draw(ui->area);
+}
+
 static void apply_selected(Ui *ui) {
   if (!ui->items->len) return;
   Item *item = g_ptr_array_index(ui->items, ui->selected);
+  if (ui->kind==WPD_GUI_SWITCHER && item->directory) {
+    load_switcher_directory(ui,item->path);return;
+  }
+  GError *theme_error=NULL;
+  wpd_collection_apply_theme_for_path(ui->config,item->path,&theme_error);
+  if (theme_error) {g_printerr("wpd: %s\n",theme_error->message);g_clear_error(&theme_error);}
   gchar *request = g_strdup_printf("IMAGE\tfill\t%s", item->path);
   gchar *reply = NULL; GError *error = NULL;
   if (!wpd_ipc_send(ui->config->socket_path, request, &reply, &error))
@@ -166,6 +209,14 @@ static gboolean key_press(GtkWidget *widget, GdkEventKey *event, gpointer data) 
   else if (event->keyval == GDK_KEY_j) select_delta(ui,1);
   else if (event->keyval == GDK_KEY_Return || event->keyval == GDK_KEY_KP_Enter)
     apply_selected(ui);
+  else if (ui->kind==WPD_GUI_SWITCHER && event->keyval==GDK_KEY_BackSpace) {
+    if (g_strcmp0(ui->browse_dir,ui->config->papers_dir)) {
+      gchar *parent=g_path_get_dirname(ui->browse_dir);
+      load_switcher_directory(ui,parent);g_free(parent);
+    }
+  }
+  else if (ui->kind==WPD_GUI_SWITCHER && event->keyval==GDK_KEY_Home)
+    load_switcher_directory(ui,ui->config->papers_dir);
   else if (event->keyval == GDK_KEY_Escape) gtk_main_quit();
   else return FALSE;
   return TRUE;
@@ -223,7 +274,25 @@ static void paint_card(cairo_t *cr, Item *item, double x, double y,
                          shadow.alpha*(selected?1.0:.65)); cairo_fill(cr);
   card_path(cr, x, y, w, h, ui->style.skew, ui->style.radius);
   cairo_save(cr); cairo_clip(cr);
-  if (item->thumb) {
+  if (item->directory) {
+    GdkRGBA background=ui->style.background_color,accent=ui->style.selected_color;
+    cairo_set_source_rgba(cr,background.red,background.green,background.blue,1);
+    cairo_paint(cr);
+    double fw=w*.48,fh=h*.38,fx=x+(w-fw)/2,fy=y+h*.27;
+    cairo_move_to(cr,fx,fy+fh*.18);cairo_line_to(cr,fx+fw*.34,fy+fh*.18);
+    cairo_line_to(cr,fx+fw*.43,fy);cairo_line_to(cr,fx+fw*.72,fy);
+    cairo_line_to(cr,fx+fw*.79,fy+fh*.18);cairo_line_to(cr,fx+fw,fy+fh*.18);
+    cairo_line_to(cr,fx+fw,fy+fh);cairo_line_to(cr,fx,fy+fh);cairo_close_path(cr);
+    cairo_set_source_rgba(cr,accent.red,accent.green,accent.blue,selected?.95:.72);
+    cairo_fill(cr);
+    gchar *name=g_path_get_basename(item->path);cairo_text_extents_t extents;
+    cairo_set_font_size(cr,MIN(16.0,w/12));cairo_text_extents(cr,name,&extents);
+    GdkRGBA foreground=ui->style.foreground_color;
+    cairo_set_source_rgba(cr,foreground.red,foreground.green,foreground.blue,
+                          foreground.alpha);
+    cairo_move_to(cr,x+w/2-extents.width/2-extents.x_bearing,y+h*.82);
+    cairo_show_text(cr,name);g_free(name);
+  } else if (item->thumb) {
     double sw = cairo_image_surface_get_width(item->thumb);
     double sh = cairo_image_surface_get_height(item->thumb);
     double scale = MAX(w / sw, h / sh);
@@ -323,7 +392,9 @@ static gboolean draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
     cairo_set_source_rgba(cr,foreground.red,foreground.green,foreground.blue,
                           foreground.alpha);
     cairo_move_to(cr,40,60);
-    cairo_show_text(cr, "No wallpapers in the WPD papers directory"); return FALSE;
+    cairo_show_text(cr,ui->kind==WPD_GUI_SWITCHER?
+      "This collection is empty — Backspace returns to its parent":
+      "No wallpapers in the WPD papers directory"); return FALSE;
   }
   if (ui->kind==WPD_GUI_GRID) {
     gint columns=CLAMP(area.width/(ui->style.side_width+34),2,6);
@@ -502,6 +573,15 @@ static gboolean draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
   if (ui->kind == WPD_GUI_SWITCHER) {
     cairo_rectangle(cr,deck_x,deck_y,deck_w,deck_h);
     cairo_clip(cr);
+    const gchar *relative=ui->browse_dir+strlen(ui->config->papers_dir);
+    while (*relative==G_DIR_SEPARATOR) relative++;
+    gchar *crumb=*relative?g_strdup_printf("Papers  /  %s",relative):g_strdup("Papers");
+    GdkRGBA foreground=ui->style.foreground_color;
+    cairo_set_source_rgba(cr,foreground.red,foreground.green,foreground.blue,
+                          foreground.alpha*.8);
+    cairo_set_font_size(cr,MAX(9.0,11*layout_scale));
+    cairo_move_to(cr,deck_x+12*layout_scale,deck_y+17*layout_scale);
+    cairo_show_text(cr,crumb);g_free(crumb);
   }
   gint base_range = ui->kind == WPD_GUI_SWITCHER ? 2 :
                     ui->kind==WPD_GUI_FILMSTRIP ? 4 : 3;
@@ -564,7 +644,9 @@ static gboolean draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
     double label_y=deck_y+deck_h-12*layout_scale;
     cairo_move_to(cr,area.width/2-extents.width/2-extents.x_bearing,label_y);
     cairo_show_text(cr,name);
-    gchar *position=g_strdup_printf("%d / %u",ui->selected+1,ui->items->len);
+    gchar *position=chosen->directory?
+      g_strdup_printf("folder  ·  Enter   %d / %u",ui->selected+1,ui->items->len):
+      g_strdup_printf("%d / %u",ui->selected+1,ui->items->len);
     cairo_set_font_size(cr,MAX(9.0,11*layout_scale));
     cairo_text_extents(cr,position,&extents);
     cairo_set_source_rgba(cr,accent.red,accent.green,accent.blue,accent.alpha);
@@ -642,14 +724,16 @@ int wpd_gui_run(WpdConfig *config, WpdGuiKind kind) {
   Ui ui = {0}; ui.config=config; ui.kind=kind; ui.hovered=-1;
   wpd_switcher_config_load(config,&ui.style);
   g_mkdir_with_parents(config->cache_dir,0700);
-  GPtrArray *paths = wpd_wallpapers_scan(config->papers_dir);
   ui.items = g_ptr_array_new_with_free_func(item_unref);
-  for (guint i=0; i<paths->len; i++) {
-    Item *item=g_new0(Item,1); item->refs=1;
-    item->path=g_strdup(g_ptr_array_index(paths,i));
-    g_ptr_array_add(ui.items,item);
+  if (kind!=WPD_GUI_SWITCHER) {
+    GPtrArray *paths=wpd_wallpapers_scan(config->papers_dir);
+    for (guint i=0; i<paths->len; i++) {
+      Item *item=g_new0(Item,1); item->refs=1;
+      item->path=g_strdup(g_ptr_array_index(paths,i));
+      g_ptr_array_add(ui.items,item);
+    }
+    g_ptr_array_free(paths,TRUE);
   }
-  g_ptr_array_free(paths,TRUE);
   ui.window=gtk_window_new(GTK_WINDOW_TOPLEVEL);
   gtk_window_set_decorated(GTK_WINDOW(ui.window),FALSE);
   gtk_widget_set_app_paintable(ui.window,TRUE);
@@ -686,11 +770,13 @@ int wpd_gui_run(WpdConfig *config, WpdGuiKind kind) {
   g_signal_connect(ui.area,"leave-notify-event",G_CALLBACK(pointer_leave),&ui);
   g_signal_connect(ui.window,"key-press-event",G_CALLBACK(key_press),&ui);
   g_signal_connect(ui.window,"destroy",G_CALLBACK(quit_if_running),NULL);
+  if (kind==WPD_GUI_SWITCHER) load_switcher_directory(&ui,config->papers_dir);
   gtk_widget_show_all(ui.window);
-  for (guint i=0;i<ui.items->len;i++) request_thumb(&ui,g_ptr_array_index(ui.items,i));
+  if (kind!=WPD_GUI_SWITCHER)
+    for (guint i=0;i<ui.items->len;i++) request_thumb(&ui,g_ptr_array_index(ui.items,i));
   gtk_main();
   if (ui.animation_timer) g_source_remove(ui.animation_timer);
   g_object_set_data(G_OBJECT(ui.area),"wpd-ui",NULL);
-  gtk_widget_destroy(ui.window); g_ptr_array_free(ui.items,TRUE);
+  gtk_widget_destroy(ui.window);g_free(ui.browse_dir);g_ptr_array_free(ui.items,TRUE);
   return 0;
 }

@@ -38,6 +38,26 @@ static gchar *collection_theme(const gchar *directory) {
   g_free(data);g_free(path);return theme;
 }
 
+gboolean wpd_collection_apply_theme_for_path(const WpdConfig *config,
+                                             const gchar *paper,GError **error) {
+  gchar *directory=g_path_get_dirname(paper);
+  gboolean applied=FALSE;
+  while (g_str_has_prefix(directory,config->papers_dir)) {
+    gchar *theme=collection_theme(directory);
+    if (theme) {
+      applied=wpd_theme_set(config,theme,error);
+      g_free(theme);
+      break;
+    }
+    if (!g_strcmp0(directory,config->papers_dir)) break;
+    gchar *parent=g_path_get_dirname(directory);
+    g_free(directory);
+    directory=parent;
+  }
+  g_free(directory);
+  return applied;
+}
+
 gboolean wpd_collection_set_theme(const WpdConfig *config,const gchar *name,
                                   const gchar *theme,GError **error) {
   if(g_strcmp0(theme,"light")&&g_strcmp0(theme,"dark")) {
