@@ -16,5 +16,5 @@ clean:
 	$(MESON) compile -C $(BUILD_DIR) --clean
 
 test: all
-	$(BUILD_DIR)/wpd --version
-	$(BUILD_DIR)/wpd --help >/dev/null
+	$(BUILD_DIR)/wmd --version
+	$(BUILD_DIR)/wmd --help >/dev/null

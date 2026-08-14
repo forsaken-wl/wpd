@@ -1,6 +1,7 @@
 #include "daemon.h"
 #include "ipc.h"
 #include "renderer.h"
+#include "video.h"
 #include <glib/gstdio.h>
 #include <errno.h>
 #include <sys/stat.h>
@@ -13,11 +14,12 @@
 typedef struct {
   WpdConfig *c;
   WpdRenderer *r;
+  WmdVideo *video;
 } Daemon;
 
 int wpd_daemon_detach(const WpdConfig *config) {
   pid_t child=fork();
-  if (child<0) { g_printerr("wpd: cannot fork daemon: %s\n",g_strerror(errno)); return -1; }
+  if (child<0) { g_printerr("wmd: cannot fork daemon: %s\n",g_strerror(errno)); return -1; }
   if (child>0) {
     int status;
     while (waitpid(child,&status,0)<0 && errno==EINTR) {}
@@ -201,7 +203,8 @@ static gchar *handle(const gchar *request, gpointer data) {
     g_free(d->c->transition); d->c->transition=g_strdup(v[1]);
     g_strfreev(v); return g_strdup("OK");
   }
-  if (g_strcmp0(v[0], "IMAGE") || !v[1] || !v[2]) {
+  gboolean is_video=!g_strcmp0(v[0],"VIDEO");
+  if ((!is_video && g_strcmp0(v[0], "IMAGE")) || !v[1] || !v[2]) {
     g_strfreev(v);
     return g_strdup("ERR bad command");
   }
@@ -213,52 +216,57 @@ static gchar *handle(const gchar *request, gpointer data) {
   gchar *path = g_canonicalize_filename(v[2], NULL);
   if (!g_file_test(path, G_FILE_TEST_IS_REGULAR)) {
     g_free(path); g_strfreev(v);
-    return g_strdup("ERR image not found");
+    return g_strdup("ERR media not found");
   }
   GError *error = NULL;
-  WpdTransition transition = wpd_transition_parse(v[3] ? v[3] : d->c->transition);
-  if (!wpd_renderer_set(d->r, path, mode, transition, &error)) {
+  gboolean applied;
+  if(is_video) applied=wmd_video_play(d->video,path,mode,&error);
+  else {wmd_video_stop(d->video);WpdTransition transition=wpd_transition_parse(v[3]?v[3]:d->c->transition);applied=wpd_renderer_set(d->r,path,mode,transition,&error);}
+  if (!applied) {
     gchar *reply = g_strdup_printf("ERR %s", error->message);
     g_clear_error(&error); g_free(path); g_strfreev(v);
     return reply;
   }
   g_mkdir_with_parents(d->c->state_dir, 0700);
-  gchar *state = g_strdup_printf("%s\t%s\n", v[1], path);
+  gchar *state = g_strdup_printf("%s\t%s\t%s\n",is_video?"video":"image",v[1],path);
   g_file_set_contents(d->c->state_file, state, -1, NULL);
   g_free(state);
-  run_matugen(d->c,path);
+  if(!is_video)run_matugen(d->c,path);
   g_free(path); g_strfreev(v);
   return g_strdup("OK");
 }
 
 int wpd_daemon_run(WpdConfig *c) {
-  if (!c->runtime_dir) { g_printerr("wpd: XDG_RUNTIME_DIR is not set\n"); return 1; }
+  if (!c->runtime_dir) { g_printerr("wmd: XDG_RUNTIME_DIR is not set\n"); return 1; }
   if (g_mkdir_with_parents(c->runtime_dir, 0700) < 0) {
-    g_printerr("wpd: cannot create runtime directory\n"); return 1;
+    g_printerr("wmd: cannot create runtime directory\n"); return 1;
   }
   if (g_file_test(c->socket_path, G_FILE_TEST_EXISTS)) {
     gchar *reply = NULL; GError *error = NULL;
     if (wpd_ipc_send(c->socket_path, "PING", &reply, &error)) {
-      g_printerr("wpd: daemon already running\n"); g_free(reply); return 1;
+      g_printerr("wmd: daemon already running\n"); g_free(reply); return 1;
     }
     g_clear_error(&error); g_unlink(c->socket_path);
   }
   Daemon d = {.c=c, .r=wpd_renderer_new(c->duration_ms, c->fps)};
+  d.video=wmd_video_new(d.r);
   GError *error = NULL;
   GSocketService *service = wpd_ipc_listen(c->socket_path, handle, &d, &error);
   if (!service) {
-    g_printerr("wpd: %s\n", error->message); g_clear_error(&error);
-    wpd_renderer_free(d.r); return 1;
+    g_printerr("wmd: %s\n", error->message); g_clear_error(&error);
+    wmd_video_free(d.video);wpd_renderer_free(d.r); return 1;
   }
   chmod(c->socket_path, 0600);
   gchar *saved = NULL;
   if (g_file_get_contents(c->state_file, &saved, NULL, NULL)) {
-    g_strchomp(saved); gchar **v = g_strsplit(saved, "\t", 2); WpdScaleMode mode;
-    if (v[1] && g_file_test(v[1], G_FILE_TEST_EXISTS) && wpd_scale_mode_parse(v[0], &mode))
-      wpd_renderer_set(d.r, v[1], mode, WPD_TRANS_FADE, NULL);
+    g_strchomp(saved); gchar **v = g_strsplit(saved, "\t", 3); WpdScaleMode mode;
+    if (v[2] && g_file_test(v[2], G_FILE_TEST_EXISTS) && wpd_scale_mode_parse(v[1], &mode)) {
+      if(!g_strcmp0(v[0],"video"))wmd_video_play(d.video,v[2],mode,NULL);
+      else wpd_renderer_set(d.r,v[2],mode,WPD_TRANS_FADE,NULL);
+    }
     g_strfreev(v); g_free(saved);
   }
   gtk_main();
-  g_object_unref(service); g_unlink(c->socket_path); wpd_renderer_free(d.r);
+  g_object_unref(service); g_unlink(c->socket_path);wmd_video_free(d.video);wpd_renderer_free(d.r);
   return 0;
 }

@@ -25,7 +25,7 @@ int wpd_alpha_run(void) {
   gtk_layer_set_anchor(GTK_WINDOW(window),GTK_LAYER_SHELL_EDGE_BOTTOM,TRUE);
   gtk_layer_set_exclusive_zone(GTK_WINDOW(window),0);
   gtk_layer_set_keyboard_mode(GTK_WINDOW(window),GTK_LAYER_SHELL_KEYBOARD_MODE_EXCLUSIVE);
-  gtk_layer_set_namespace(GTK_WINDOW(window),"wpd-alpha-1-1-1");
+  gtk_layer_set_namespace(GTK_WINDOW(window),"wmd-alpha-1-1-1");
 
   GtkCssProvider *css=gtk_css_provider_new();
   gtk_css_provider_load_from_data(css,"window { background: #808080; }",-1,NULL);

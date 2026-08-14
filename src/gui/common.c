@@ -78,7 +78,7 @@ static void thumb_done(GObject *source, GAsyncResult *result, gpointer data) {
   Item *item = job->item;
   GError *error = NULL;
   cairo_surface_t *surface = g_task_propagate_pointer(G_TASK(result), &error);
-  Ui *ui = g_object_get_data(source, "wpd-ui");
+  Ui *ui = g_object_get_data(source, "wmd-ui");
   if (surface) {
     item->thumb = cairo_surface_reference(surface);
     cairo_surface_destroy(surface);
@@ -98,7 +98,7 @@ static void request_thumb(Ui *ui, Item *item) {
   job->item = item_ref(item);
   g_free(identity); g_free(sum);
   GTask *task = g_task_new(ui->area, NULL, thumb_done, NULL);
-  g_object_set_data(G_OBJECT(ui->area), "wpd-ui", ui);
+  g_object_set_data(G_OBJECT(ui->area), "wmd-ui", ui);
   g_task_set_task_data(task, job, (GDestroyNotify)thumb_job_free);
   g_task_run_in_thread(task, thumb_worker);
   g_object_unref(task);
@@ -110,9 +110,9 @@ static void apply_selected(Ui *ui) {
   gchar *request = g_strdup_printf("IMAGE\tfill\t%s", item->path);
   gchar *reply = NULL; GError *error = NULL;
   if (!wpd_ipc_send(ui->config->socket_path, request, &reply, &error))
-    g_printerr("wpd: %s\n", error->message);
+    g_printerr("wmd: %s\n", error->message);
   else if (!g_str_has_prefix(reply, "OK"))
-    g_printerr("wpd: %s\n", reply);
+    g_printerr("wmd: %s\n", reply);
   else
     gtk_main_quit();
   g_clear_error(&error); g_free(reply); g_free(request);
@@ -663,16 +663,16 @@ int wpd_gui_run(WpdConfig *config, WpdGuiKind kind) {
   gtk_layer_set_anchor(GTK_WINDOW(ui.window),GTK_LAYER_SHELL_EDGE_BOTTOM,TRUE);
   gtk_layer_set_exclusive_zone(GTK_WINDOW(ui.window),0);
   gtk_layer_set_keyboard_mode(GTK_WINDOW(ui.window),GTK_LAYER_SHELL_KEYBOARD_MODE_EXCLUSIVE);
-  const gchar *namespaces[]={"wpd-switcher","wpd-carousel","wpd-3d",
-                             "wpd-grid","wpd-stack","wpd-filmstrip","wpd-roots"};
+  const gchar *namespaces[]={"wmd-switcher","wmd-carousel","wmd-3d",
+                             "wmd-grid","wmd-stack","wmd-filmstrip","wmd-roots"};
   gtk_layer_set_namespace(GTK_WINDOW(ui.window),namespaces[kind]);
   ui.area=gtk_drawing_area_new();
   gtk_widget_set_app_paintable(ui.area,TRUE);
   GtkCssProvider *css=gtk_css_provider_new();
   gtk_css_provider_load_from_data(css,
-    "window#wpd-picker, drawingarea#wpd-picker-area { background-color: transparent; }",-1,NULL);
-  gtk_widget_set_name(ui.window,"wpd-picker");
-  gtk_widget_set_name(ui.area,"wpd-picker-area");
+    "window#wmd-picker, drawingarea#wmd-picker-area { background-color: transparent; }",-1,NULL);
+  gtk_widget_set_name(ui.window,"wmd-picker");
+  gtk_widget_set_name(ui.area,"wmd-picker-area");
   gtk_style_context_add_provider_for_screen(gtk_widget_get_screen(ui.window),
     GTK_STYLE_PROVIDER(css),GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
   g_object_unref(css);
@@ -690,7 +690,7 @@ int wpd_gui_run(WpdConfig *config, WpdGuiKind kind) {
   for (guint i=0;i<ui.items->len;i++) request_thumb(&ui,g_ptr_array_index(ui.items,i));
   gtk_main();
   if (ui.animation_timer) g_source_remove(ui.animation_timer);
-  g_object_set_data(G_OBJECT(ui.area),"wpd-ui",NULL);
+  g_object_set_data(G_OBJECT(ui.area),"wmd-ui",NULL);
   gtk_widget_destroy(ui.window); g_ptr_array_free(ui.items,TRUE);
   return 0;
 }

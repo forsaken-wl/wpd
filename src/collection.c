@@ -22,7 +22,7 @@ static gchar *collection_path(const WpdConfig *config,const gchar *name,GError *
 }
 
 static gchar *collection_theme(const gchar *directory) {
-  gchar *path=g_build_filename(directory,".wpd.conf",NULL),*data=NULL,*theme=NULL;
+  gchar *path=g_build_filename(directory,".wmd.conf",NULL),*data=NULL,*theme=NULL;
   if (g_file_get_contents(path,&data,NULL,NULL)) {
     gchar **lines=g_strsplit(data,"\n",-1);
     for(guint i=0;lines[i];i++) {
@@ -45,16 +45,16 @@ gboolean wpd_collection_set_theme(const WpdConfig *config,const gchar *name,
     return FALSE;
   }
   gchar *directory=collection_path(config,name,error);if(!directory)return FALSE;
-  gchar *path=g_build_filename(directory,".wpd.conf",NULL);
-  gchar *contents=g_strdup_printf("# WPD collection behavior\ntheme=%s\n",theme);
+  gchar *path=g_build_filename(directory,".wmd.conf",NULL);
+  gchar *contents=g_strdup_printf("# WMD collection behavior\ntheme=%s\n",theme);
   gboolean ok=g_file_set_contents(path,contents,-1,error);
   g_free(contents);g_free(path);g_free(directory);return ok;
 }
 
 static gchar *current_path(const WpdConfig *config) {
   gchar *state=NULL;if(!g_file_get_contents(config->state_file,&state,NULL,NULL))return NULL;
-  g_strchomp(state);gchar **parts=g_strsplit(state,"\t",2);
-  gchar *path=parts[1]?g_strdup(parts[1]):NULL;g_strfreev(parts);g_free(state);return path;
+  g_strchomp(state);gchar **parts=g_strsplit(state,"\t",3);
+  gchar *path=parts[2]?g_strdup(parts[2]):NULL;g_strfreev(parts);g_free(state);return path;
 }
 
 int wpd_collection_apply(WpdConfig *config,const gchar *name,const gchar *action) {

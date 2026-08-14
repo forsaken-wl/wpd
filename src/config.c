@@ -26,12 +26,12 @@ static void parse_daemon(WpdConfig *c) {
 
 WpdConfig *wpd_config_new(void) {
   WpdConfig *c=g_new0(WpdConfig,1);
-  c->config_dir=g_build_filename((g_getenv("XDG_CONFIG_HOME")&&*g_getenv("XDG_CONFIG_HOME"))?g_getenv("XDG_CONFIG_HOME"):g_get_user_config_dir(),"wpd",NULL);
+  c->config_dir=g_build_filename((g_getenv("XDG_CONFIG_HOME")&&*g_getenv("XDG_CONFIG_HOME"))?g_getenv("XDG_CONFIG_HOME"):g_get_user_config_dir(),"wmd",NULL);
   c->papers_dir=g_build_filename(c->config_dir,"papers",NULL);
-  gchar *cache=base_path("XDG_CACHE_HOME",".cache"); c->cache_dir=g_build_filename(cache,"wpd",NULL); g_free(cache);
-  gchar *state=base_path("XDG_STATE_HOME",".local/state"); c->state_dir=g_build_filename(state,"wpd",NULL); g_free(state);
+  gchar *cache=base_path("XDG_CACHE_HOME",".cache"); c->cache_dir=g_build_filename(cache,"wmd",NULL); g_free(cache);
+  gchar *state=base_path("XDG_STATE_HOME",".local/state"); c->state_dir=g_build_filename(state,"wmd",NULL); g_free(state);
   const gchar *runtime=g_getenv("XDG_RUNTIME_DIR");
-  c->runtime_dir=runtime&&*runtime?g_build_filename(runtime,"wpd",NULL):NULL;
+  c->runtime_dir=runtime&&*runtime?g_build_filename(runtime,"wmd",NULL):NULL;
   c->socket_path=c->runtime_dir?g_build_filename(c->runtime_dir,"socket",NULL):NULL;
   c->state_file=g_build_filename(c->state_dir,"current",NULL);
   c->theme_file=g_build_filename(c->config_dir,"switcher.conf",NULL);
