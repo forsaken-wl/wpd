@@ -114,14 +114,17 @@ static void request_thumb(Ui *ui, Item *item) {
 }
 
 static void load_switcher_directory(Ui *ui,const gchar *directory) {
+  /* The caller may pass a path owned by the currently selected item. Keep our
+     own copy before clearing the array that owns that item. */
+  gchar *target=g_strdup(directory);
   if (ui->animation_timer) {g_source_remove(ui->animation_timer);ui->animation_timer=0;}
   ui->animation_offset=ui->animation_velocity=0;ui->selected=0;ui->hovered=-1;
   g_ptr_array_set_size(ui->items,0);
-  GDir *dir=g_dir_open(directory,0,NULL);
+  GDir *dir=g_dir_open(target,0,NULL);
   if (dir) {
     const gchar *name;
     while ((name=g_dir_read_name(dir))) {
-      gchar *path=g_build_filename(directory,name,NULL);
+      gchar *path=g_build_filename(target,name,NULL);
       gboolean is_dir=g_file_test(path,G_FILE_TEST_IS_DIR)&&
                        !g_file_test(path,G_FILE_TEST_IS_SYMLINK);
       if (is_dir || (g_file_test(path,G_FILE_TEST_IS_REGULAR)&&
@@ -133,7 +136,7 @@ static void load_switcher_directory(Ui *ui,const gchar *directory) {
     g_dir_close(dir);
   }
   g_ptr_array_sort(ui->items,item_compare);
-  g_free(ui->browse_dir);ui->browse_dir=g_strdup(directory);
+  g_free(ui->browse_dir);ui->browse_dir=target;
   for (guint i=0;i<ui->items->len;i++) {
     Item *item=g_ptr_array_index(ui->items,i);
     if (!item->directory) request_thumb(ui,item);
@@ -275,16 +278,34 @@ static void paint_card(cairo_t *cr, Item *item, double x, double y,
   card_path(cr, x, y, w, h, ui->style.skew, ui->style.radius);
   cairo_save(cr); cairo_clip(cr);
   if (item->directory) {
-    GdkRGBA background=ui->style.background_color,accent=ui->style.selected_color;
+    GdkRGBA background=ui->style.background_color;
     cairo_set_source_rgba(cr,background.red,background.green,background.blue,1);
     cairo_paint(cr);
-    double fw=w*.48,fh=h*.38,fx=x+(w-fw)/2,fy=y+h*.27;
-    cairo_move_to(cr,fx,fy+fh*.18);cairo_line_to(cr,fx+fw*.34,fy+fh*.18);
-    cairo_line_to(cr,fx+fw*.43,fy);cairo_line_to(cr,fx+fw*.72,fy);
-    cairo_line_to(cr,fx+fw*.79,fy+fh*.18);cairo_line_to(cr,fx+fw,fy+fh*.18);
-    cairo_line_to(cr,fx+fw,fy+fh);cairo_line_to(cr,fx,fy+fh);cairo_close_path(cr);
-    cairo_set_source_rgba(cr,accent.red,accent.green,accent.blue,selected?.95:.72);
-    cairo_fill(cr);
+    /* Lucide folder geometry, scaled from its 24x24 view box. */
+    double size=MIN(w,h)*.48,unit=size/24.0,fx=x+(w-size)/2,fy=y+h*.20;
+    cairo_move_to(cr,fx+20*unit,fy+20*unit);
+    cairo_curve_to(cr,fx+21.1*unit,fy+20*unit,fx+22*unit,fy+19.1*unit,
+                   fx+22*unit,fy+18*unit);
+    cairo_line_to(cr,fx+22*unit,fy+8*unit);
+    cairo_curve_to(cr,fx+22*unit,fy+6.9*unit,fx+21.1*unit,fy+6*unit,
+                   fx+20*unit,fy+6*unit);
+    cairo_line_to(cr,fx+12.1*unit,fy+6*unit);
+    cairo_curve_to(cr,fx+11.4*unit,fy+6*unit,fx+10.75*unit,fy+5.65*unit,
+                   fx+10.4*unit,fy+5.1*unit);
+    cairo_line_to(cr,fx+9.6*unit,fy+3.9*unit);
+    cairo_curve_to(cr,fx+9.23*unit,fy+3.34*unit,fx+8.61*unit,fy+3*unit,
+                   fx+7.93*unit,fy+3*unit);
+    cairo_line_to(cr,fx+4*unit,fy+3*unit);
+    cairo_curve_to(cr,fx+2.9*unit,fy+3*unit,fx+2*unit,fy+3.9*unit,
+                   fx+2*unit,fy+5*unit);
+    cairo_line_to(cr,fx+2*unit,fy+18*unit);
+    cairo_curve_to(cr,fx+2*unit,fy+19.1*unit,fx+2.9*unit,fy+20*unit,
+                   fx+4*unit,fy+20*unit);
+    cairo_close_path(cr);
+    GdkRGBA icon=selected?ui->style.selected_color:ui->style.foreground_color;
+    cairo_set_source_rgba(cr,icon.red,icon.green,icon.blue,selected?1:.82);
+    cairo_set_line_width(cr,2*unit);cairo_set_line_join(cr,CAIRO_LINE_JOIN_ROUND);
+    cairo_set_line_cap(cr,CAIRO_LINE_CAP_ROUND);cairo_stroke(cr);
     gchar *name=g_path_get_basename(item->path);cairo_text_extents_t extents;
     cairo_set_font_size(cr,MIN(16.0,w/12));cairo_text_extents(cr,name,&extents);
     GdkRGBA foreground=ui->style.foreground_color;

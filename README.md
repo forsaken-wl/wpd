@@ -64,6 +64,8 @@ WPD 0.6.1 is the Actually Useful™ update. Directories below `papers/` are coll
 
 WPD 0.6.2 makes collections first-class in `wpd switcher`. Folder cards open with Enter or a second click, Backspace returns to the parent, and Home returns to the papers root. The header shows the current collection path. Papers applied from the browser inherit the nearest collection `.wpd.conf` theme before Matugen runs. Other layouts intentionally retain the fast, flat recursive view.
 
+Collection cards use the Lucide folder icon geometry, rendered directly with Cairo in the active light/dark theme. Lucide is available under the ISC license; its notice is included in `LICENSES/Lucide.txt`.
+
 The experimental WMD (Wall Movie Daemon) live-wallpaper work is kept on the separate `wmd` Git branch based on this release. WPD remains a still-wallpaper daemon.
 
 Switcher, carousel, and 3d apply wallpapers using `fill` by default. `wpd 3d` replaces the former concept experiments with a perspective-mapped carousel: cards recede, compress toward their far edge, scale by depth, overlap back-to-front, wrap around the library, and retain the selected wallpaper title. It supports mouse selection, Left/Right or `h`/`j`, Enter, scrolling, and Escape.
