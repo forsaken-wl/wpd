@@ -1,0 +1,118 @@
+#include "wpd-build-config.h"
+#include "config.h"
+#include "daemon.h"
+#include "ipc.h"
+#include "image.h"
+#include "gui/switcher.h"
+#include "gui/carousel.h"
+#include "gui/concept.h"
+#include "gui/concept_v2.h"
+#include <gtk/gtk.h>
+
+static void help(void) {
+  g_print("WPD %s - Wayland wallpaper daemon\n\n"
+          "Usage:\n"
+          "  wpd daemon\n"
+          "  wpd image PATH [fill|fit|stretch|none]\n"
+          "  wpd switcher\n"
+          "  wpd carousel\n"
+          "  wpd concept\n"
+          "  wpd concept-v2\n"
+          "  wpd theme [light|dark]\n"
+          "  wpd help\n\n"
+          "Options:\n"
+          "  -h, --help     Show this help\n"
+          "  -v, --version  Show version\n", WPD_VERSION);
+}
+
+static int gui_init(int *argc, char ***argv) {
+  if (gtk_init_check(argc, argv)) return 0;
+  g_printerr("wpd: cannot connect to a graphical display\n");
+  return 1;
+}
+
+static int send_image(WpdConfig *config, int argc, char **argv) {
+  if (argc < 3 || argc > 4) {
+    g_printerr("usage: wpd image PATH [fill|fit|stretch|none]\n"); return 2;
+  }
+  WpdScaleMode mode;
+  const gchar *mode_name = argc == 4 ? argv[3] : "fill";
+  if (!wpd_scale_mode_parse(mode_name, &mode)) {
+    g_printerr("wpd: invalid scaling mode\n"); return 2;
+  }
+  if (!config->socket_path) {
+    g_printerr("wpd: XDG_RUNTIME_DIR is not set\n"); return 1;
+  }
+  gchar *path = g_canonicalize_filename(argv[2], NULL);
+  gchar *request = g_strdup_printf("IMAGE\t%s\t%s", mode_name, path);
+  gchar *reply = NULL; GError *error = NULL; int result = 0;
+  if (!wpd_ipc_send(config->socket_path, request, &reply, &error)) {
+    g_printerr("wpd: daemon unavailable: %s\n", error->message);
+    g_clear_error(&error); result = 1;
+  } else if (!g_str_has_prefix(reply, "OK")) {
+    g_printerr("wpd: %s\n", reply); result = 1;
+  }
+  g_free(reply); g_free(request); g_free(path);
+  return result;
+}
+
+int main(int argc, char **argv) {
+  if (argc < 2 || !g_strcmp0(argv[1], "help") ||
+      !g_strcmp0(argv[1], "--help") || !g_strcmp0(argv[1], "-h")) {
+    help(); return 0;
+  }
+  if (!g_strcmp0(argv[1], "--version") || !g_strcmp0(argv[1], "-v")) {
+    g_print("wpd %s\n", WPD_VERSION); return 0;
+  }
+  WpdConfig *config = wpd_config_new();
+  int result;
+  if (!g_strcmp0(argv[1], "daemon")) {
+    if (argc!=2) result=2;
+    else {
+      gchar *reply=NULL; GError *error=NULL;
+      gboolean running=config->socket_path &&
+        wpd_ipc_send(config->socket_path,"PING",&reply,&error);
+      g_free(reply); g_clear_error(&error);
+      if (running) {
+        g_print("wpd: daemon already running\n"); result=0;
+      } else {
+        int detached=wpd_daemon_detach(config);
+        if (detached>0) result=0;
+        else if (detached<0) result=1;
+        else {
+          result=gui_init(&argc,&argv);
+          if (!result) result=wpd_daemon_run(config);
+        }
+      }
+    }
+  } else if (!g_strcmp0(argv[1], "image")) {
+    result = send_image(config, argc, argv);
+  } else if (!g_strcmp0(argv[1],"theme")) {
+    if (argc==2) {
+      g_print("%s\n",wpd_theme_get(config)); result=0;
+    } else if (argc==3) {
+      GError *error=NULL;
+      if (wpd_theme_set(config,argv[2],&error)) {
+        g_print("theme: %s\n",argv[2]); result=0;
+      } else {
+        g_printerr("wpd: %s\n",error->message); g_clear_error(&error); result=2;
+      }
+    } else {
+      g_printerr("usage: wpd theme [light|dark]\n"); result=2;
+    }
+  } else if (!g_strcmp0(argv[1], "switcher") || !g_strcmp0(argv[1], "carousel") ||
+             !g_strcmp0(argv[1], "concept") || !g_strcmp0(argv[1], "concept-v2")) {
+    result = argc != 2 ? 2 : gui_init(&argc, &argv);
+    if (!result) {
+      if (!g_strcmp0(argv[1],"switcher")) result=wpd_switcher_run(config);
+      else if (!g_strcmp0(argv[1],"carousel")) result=wpd_carousel_run(config);
+      else if (!g_strcmp0(argv[1],"concept")) result=wpd_concept_run(config);
+      else result=wpd_concept_v2_run(config);
+    }
+  } else {
+    g_printerr("wpd: unknown command '%s'\nTry 'wpd help'.\n", argv[1]);
+    result = 2;
+  }
+  wpd_config_free(config);
+  return result;
+}

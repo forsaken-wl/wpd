@@ -1,0 +1,1 @@
+# Reserved for future build-time switches. HEIF and layer-shell are intentionally required.

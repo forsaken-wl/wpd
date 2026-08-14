@@ -1,0 +1,4 @@
+#include "wallpaper.h"
+gboolean wpd_image_extension_supported(const gchar*p){const gchar*e=strrchr(p,'.');if(!e)return FALSE;e++;return !g_ascii_strcasecmp(e,"png")||!g_ascii_strcasecmp(e,"jpg")||!g_ascii_strcasecmp(e,"jpeg")||!g_ascii_strcasecmp(e,"webp")||!g_ascii_strcasecmp(e,"heif")||!g_ascii_strcasecmp(e,"heic");}
+static gint path_cmp(gconstpointer a,gconstpointer b){return g_utf8_collate(*(const gchar*const*)a,*(const gchar*const*)b);}
+GPtrArray*wpd_wallpapers_scan(const gchar*d){GPtrArray*a=g_ptr_array_new_with_free_func(g_free);GDir*dir=g_dir_open(d,0,NULL);if(!dir)return a;const gchar*n;while((n=g_dir_read_name(dir)))if(wpd_image_extension_supported(n)){gchar*p=g_build_filename(d,n,NULL);if(g_file_test(p,G_FILE_TEST_IS_REGULAR))g_ptr_array_add(a,p);else g_free(p);}g_dir_close(dir);g_ptr_array_sort(a,path_cmp);return a;}
