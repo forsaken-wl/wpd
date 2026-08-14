@@ -46,6 +46,10 @@ wpd image "/path/with spaces/wallpaper.heic" fill
 wpd switcher
 wpd carousel
 wpd 3d
+wpd grid
+wpd stack
+wpd filmstrip
+wpd roots
 wpd theme light
 ```
 
@@ -56,6 +60,8 @@ Switcher, carousel, and 3d apply wallpapers using `fill` by default. `wpd 3d` re
 The 1.1 switcher scales its deck to narrow outputs, adds pointer hover lift, frames the band with Matugen colors, and shows the selected filename and library position beneath the cards.
 
 WPD 1.1.1 adds `wpd --alpha`, a harmless tribute to Minecraft Alpha 1.1.1: it has a 31% chance to cover the screen in gray. Press Escape to dismiss it. The easter egg is isolated from the daemon and normal pickers.
+
+WPD 1.1.2 expands the picker family to seven layouts. `grid` provides a pageable overview with two-dimensional arrow or `h`/`j`/`k`/`l` navigation, `stack` fans overlapping cards around the selection, and `filmstrip` offers a dense nine-card strip. `roots` returns to WPD's practical origins with a semi-transparent, rectangular Windows 7/8 Alt-Tab and modern-Metro-inspired panel. Run `wpd layouts` to discover every available layout. All layouts retain wraparound, cached asynchronous thumbnails, click-to-select, Enter-to-apply, scrolling, and Escape.
 
 In 0.4.3-ng, the experimental `refine` layout was merged into the default switcher and the standalone command was removed. The switcher now uses the emphasized center-card layout with five visible cards and a compact rounded band.
 

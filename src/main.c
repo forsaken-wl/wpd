@@ -8,6 +8,7 @@
 #include "gui/carousel.h"
 #include "gui/three_d.h"
 #include "gui/alpha.h"
+#include "gui/layouts.h"
 #include <gtk/gtk.h>
 
 static void help(void) {
@@ -18,6 +19,11 @@ static void help(void) {
           "  wpd switcher\n"
           "  wpd carousel\n"
           "  wpd 3d\n"
+          "  wpd grid\n"
+          "  wpd stack\n"
+          "  wpd filmstrip\n"
+          "  wpd roots\n"
+          "  wpd layouts\n"
           "  wpd theme [light|dark]\n"
           "  wpd transition [mode|list]\n"
           "  wpd --alpha\n"
@@ -133,13 +139,22 @@ int main(int argc, char **argv) {
     } else {
       g_printerr("wpd: unknown transition\nTry 'wpd transition list'.\n"); result=2;
     }
+  } else if (!g_strcmp0(argv[1],"layouts")) {
+    if (argc!=2) result=2;
+    else { g_print("switcher carousel 3d grid stack filmstrip roots\n"); result=0; }
   } else if (!g_strcmp0(argv[1], "switcher") || !g_strcmp0(argv[1], "carousel") ||
-             !g_strcmp0(argv[1], "3d")) {
+             !g_strcmp0(argv[1], "3d") || !g_strcmp0(argv[1],"grid") ||
+             !g_strcmp0(argv[1],"stack") || !g_strcmp0(argv[1],"filmstrip") ||
+             !g_strcmp0(argv[1],"roots")) {
     result = argc != 2 ? 2 : gui_init(&argc, &argv);
     if (!result) {
       if (!g_strcmp0(argv[1],"switcher")) result=wpd_switcher_run(config);
       else if (!g_strcmp0(argv[1],"carousel")) result=wpd_carousel_run(config);
-      else result=wpd_three_d_run(config);
+      else if (!g_strcmp0(argv[1],"3d")) result=wpd_three_d_run(config);
+      else if (!g_strcmp0(argv[1],"grid")) result=wpd_grid_run(config);
+      else if (!g_strcmp0(argv[1],"stack")) result=wpd_stack_run(config);
+      else if (!g_strcmp0(argv[1],"filmstrip")) result=wpd_filmstrip_run(config);
+      else result=wpd_roots_run(config);
     }
   } else {
     g_printerr("wpd: unknown command '%s'\nTry 'wpd help'.\n", argv[1]);
