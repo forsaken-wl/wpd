@@ -106,6 +106,7 @@ int main(int argc, char **argv) {
     } else if (argc==3 && !g_strcmp0(argv[2],"list")) {
       gsize count; const gchar *const *names=wpd_transition_names(&count);
       for (gsize i=0;i<count;i++) g_print("%s%s",names[i],i+1<count?" ":"\n");
+      g_print("modifiers: invert left right top bottom topleft topright btmleft btmright\n");
       result=0;
     } else if (argc==3 && wpd_transition_valid(argv[2])) {
       GError *error=NULL;
