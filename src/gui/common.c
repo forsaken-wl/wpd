@@ -25,6 +25,11 @@ typedef struct {
 typedef struct { gchar *path, *cache; Item *item; } ThumbJob;
 typedef struct { gint index; double position; } RenderEntry;
 
+static void quit_if_running(GtkWidget *widget,gpointer data) {
+  (void)widget;(void)data;
+  if (gtk_main_level()>0) gtk_main_quit();
+}
+
 static gint render_entry_compare(gconstpointer a, gconstpointer b) {
   const RenderEntry *left=a, *right=b;
   double difference=fabs(right->position)-fabs(left->position);
@@ -531,7 +536,7 @@ int wpd_gui_run(WpdConfig *config, WpdGuiKind kind) {
   g_signal_connect(ui.area,"motion-notify-event",G_CALLBACK(pointer_motion),&ui);
   g_signal_connect(ui.area,"leave-notify-event",G_CALLBACK(pointer_leave),&ui);
   g_signal_connect(ui.window,"key-press-event",G_CALLBACK(key_press),&ui);
-  g_signal_connect(ui.window,"destroy",G_CALLBACK(gtk_main_quit),NULL);
+  g_signal_connect(ui.window,"destroy",G_CALLBACK(quit_if_running),NULL);
   gtk_widget_show_all(ui.window);
   for (guint i=0;i<ui.items->len;i++) request_thumb(&ui,g_ptr_array_index(ui.items,i));
   gtk_main();

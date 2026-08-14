@@ -7,6 +7,7 @@
 #include "gui/switcher.h"
 #include "gui/carousel.h"
 #include "gui/three_d.h"
+#include "gui/alpha.h"
 #include <gtk/gtk.h>
 
 static void help(void) {
@@ -19,6 +20,7 @@ static void help(void) {
           "  wpd 3d\n"
           "  wpd theme [light|dark]\n"
           "  wpd transition [mode|list]\n"
+          "  wpd --alpha\n"
           "  wpd help\n\n"
           "Options:\n"
           "  -h, --help     Show this help\n"
@@ -66,7 +68,15 @@ int main(int argc, char **argv) {
   }
   WpdConfig *config = wpd_config_new();
   int result;
-  if (!g_strcmp0(argv[1], "daemon")) {
+  if (!g_strcmp0(argv[1],"--alpha")) {
+    if (argc!=2) result=2;
+    else if (g_random_int_range(0,100)>=31) {
+      g_print("wpd: alpha behaved itself this time\n"); result=0;
+    } else {
+      result=gui_init(&argc,&argv);
+      if (!result) result=wpd_alpha_run();
+    }
+  } else if (!g_strcmp0(argv[1], "daemon")) {
     if (argc!=2) result=2;
     else {
       gchar *reply=NULL; GError *error=NULL;
