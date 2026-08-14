@@ -203,6 +203,17 @@ static gchar *handle(const gchar *request, gpointer data) {
     g_free(d->c->transition); d->c->transition=g_strdup(v[1]);
     g_strfreev(v); return g_strdup("OK");
   }
+  if(!g_strcmp0(v[0],"FPS")&&v[1]){
+    guint64 fps=g_ascii_strtoull(v[1],NULL,10);
+    if(fps<1||fps>240){g_strfreev(v);return g_strdup("ERR fps must be 1-240");}
+    d->c->fps=fps;wmd_video_set_fps(d->video,fps);g_strfreev(v);return g_strdup("OK");
+  }
+  if(!g_strcmp0(v[0],"HARDWARE")&&v[1]){
+    if(g_strcmp0(v[1],"auto")&&g_strcmp0(v[1],"on")&&g_strcmp0(v[1],"off")){
+      g_strfreev(v);return g_strdup("ERR hardware must be auto, on, or off");}
+    g_free(d->c->hardware);d->c->hardware=g_strdup(v[1]);wmd_video_set_hardware(d->video,v[1]);
+    g_strfreev(v);return g_strdup("OK (applies to next video)");
+  }
   gboolean is_video=!g_strcmp0(v[0],"VIDEO");
   if ((!is_video && g_strcmp0(v[0], "IMAGE")) || !v[1] || !v[2]) {
     g_strfreev(v);
@@ -250,6 +261,8 @@ int wpd_daemon_run(WpdConfig *c) {
   }
   Daemon d = {.c=c, .r=wpd_renderer_new(c->duration_ms, c->fps)};
   d.video=wmd_video_new(d.r);
+  wmd_video_set_fps(d.video,c->fps);
+  wmd_video_set_hardware(d.video,c->hardware);
   GError *error = NULL;
   GSocketService *service = wpd_ipc_listen(c->socket_path, handle, &d, &error);
   if (!service) {
@@ -261,7 +274,13 @@ int wpd_daemon_run(WpdConfig *c) {
   if (g_file_get_contents(c->state_file, &saved, NULL, NULL)) {
     g_strchomp(saved); gchar **v = g_strsplit(saved, "\t", 3); WpdScaleMode mode;
     if (v[2] && g_file_test(v[2], G_FILE_TEST_EXISTS) && wpd_scale_mode_parse(v[1], &mode)) {
-      if(!g_strcmp0(v[0],"video"))wmd_video_play(d.video,v[2],mode,NULL);
+      if(!g_strcmp0(v[0],"video")) {
+        GError *restore_error=NULL;
+        if(!wmd_video_play(d.video,v[2],mode,&restore_error)) {
+          g_warning("cannot restore video: %s",restore_error->message);
+          g_clear_error(&restore_error);
+        }
+      }
       else wpd_renderer_set(d.r,v[2],mode,WPD_TRANS_FADE,NULL);
     }
     g_strfreev(v); g_free(saved);

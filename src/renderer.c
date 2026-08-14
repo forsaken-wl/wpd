@@ -111,6 +111,10 @@ void wpd_renderer_set_video_frame(WpdRenderer *r,cairo_surface_t *frame) {
     gtk_widget_queue_draw(((Output*)g_ptr_array_index(r->outputs,i))->window);
 }
 
+void wpd_renderer_max_size(WpdRenderer *r,gint *width,gint *height){*width=1;*height=1;
+  for(guint i=0;i<r->outputs->len;i++){Output *o=g_ptr_array_index(r->outputs,i);
+    *width=MAX(*width,o->w);*height=MAX(*height,o->h);}}
+
 gboolean wpd_renderer_set(WpdRenderer *r, const gchar *path, WpdScaleMode mode,
                           WpdTransition transition, GError **error) {
   if(r->video_frame){cairo_surface_destroy(r->video_frame);r->video_frame=NULL;}

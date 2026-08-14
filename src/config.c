@@ -19,6 +19,7 @@ static void parse_daemon(WpdConfig *c) {
     else if (!g_strcmp0(k,"transition")) { g_free(c->transition); c->transition=g_strdup(v); }
     else if (!g_strcmp0(k,"duration_ms")) { guint64 n=g_ascii_strtoull(v,NULL,10); if(n>=50&&n<=10000)c->duration_ms=n; }
     else if (!g_strcmp0(k,"fps")) { guint64 n=g_ascii_strtoull(v,NULL,10); if(n>=1&&n<=240)c->fps=n; }
+    else if(!g_strcmp0(k,"hardware")&&(!g_strcmp0(v,"auto")||!g_strcmp0(v,"on")||!g_strcmp0(v,"off"))){g_free(c->hardware);c->hardware=g_strdup(v);}
     g_strfreev(kv);
   }
   g_strfreev(lines); g_free(data); g_free(path);
@@ -36,10 +37,10 @@ WpdConfig *wpd_config_new(void) {
   c->state_file=g_build_filename(c->state_dir,"current",NULL);
   c->theme_file=g_build_filename(c->config_dir,"switcher.conf",NULL);
   c->matugen_command=g_strdup("matugen image %f --source-color-index 0 --quiet");
-  c->transition=g_strdup("fade"); c->duration_ms=650; c->fps=60;
+  c->transition=g_strdup("fade");c->hardware=g_strdup("auto");c->duration_ms=650;c->fps=60;
   parse_daemon(c); return c;
 }
-void wpd_config_free(WpdConfig*c){if(!c)return;g_free(c->config_dir);g_free(c->papers_dir);g_free(c->cache_dir);g_free(c->state_dir);g_free(c->runtime_dir);g_free(c->socket_path);g_free(c->state_file);g_free(c->theme_file);g_free(c->matugen_command);g_free(c->transition);g_free(c);}
+void wpd_config_free(WpdConfig*c){if(!c)return;g_free(c->config_dir);g_free(c->papers_dir);g_free(c->cache_dir);g_free(c->state_dir);g_free(c->runtime_dir);g_free(c->socket_path);g_free(c->state_file);g_free(c->theme_file);g_free(c->matugen_command);g_free(c->transition);g_free(c->hardware);g_free(c);}
 
 const gchar *wpd_theme_get(const WpdConfig *config) {
   gchar *data=NULL;
@@ -99,6 +100,41 @@ gboolean wpd_transition_set(const WpdConfig *config,const gchar *transition,GErr
   if (!found) g_string_append_printf(contents,"transition=%s\n",transition);
   gboolean result=g_file_set_contents(config->theme_file,contents->str,-1,error);
   g_string_free(contents,TRUE); g_strfreev(lines); g_free(data); return result;
+}
+
+gboolean wmd_fps_set(WpdConfig *config,guint fps,GError **error) {
+  if(fps<1||fps>240){g_set_error(error,G_OPTION_ERROR,G_OPTION_ERROR_BAD_VALUE,
+    "fps must be between 1 and 240");return FALSE;}
+  if(g_mkdir_with_parents(config->config_dir,0700)<0){g_set_error(error,G_FILE_ERROR,
+    g_file_error_from_errno(errno),"cannot create config directory");return FALSE;}
+  gchar *data=NULL;g_file_get_contents(config->theme_file,&data,NULL,NULL);
+  gchar **lines=g_strsplit(data?data:"","\n",-1);GString *contents=g_string_new(NULL);
+  gboolean found=FALSE;
+  for(guint i=0;lines[i];i++){
+    if(g_str_has_prefix(g_strstrip(lines[i]),"fps=")){g_string_append_printf(contents,
+      "fps=%u\n",fps);found=TRUE;}else if(*lines[i])g_string_append_printf(contents,"%s\n",lines[i]);
+  }
+  if(!found)g_string_append_printf(contents,"fps=%u\n",fps);
+  gboolean ok=g_file_set_contents(config->theme_file,contents->str,-1,error);
+  if(ok)config->fps=fps;
+  g_string_free(contents,TRUE);g_strfreev(lines);g_free(data);return ok;
+}
+
+static gboolean set_text_key(WpdConfig *config,const gchar *key,const gchar *value,GError **error){
+  if(g_mkdir_with_parents(config->config_dir,0700)<0){g_set_error(error,G_FILE_ERROR,
+    g_file_error_from_errno(errno),"cannot create config directory");return FALSE;}
+  gchar *data=NULL;g_file_get_contents(config->theme_file,&data,NULL,NULL);gchar **lines=g_strsplit(data?data:"","\n",-1);GString *out=g_string_new(NULL);gboolean found=FALSE;
+  for(guint i=0;lines[i];i++){gchar *line=g_strstrip(lines[i]);gsize length=strlen(key);
+    if(g_str_has_prefix(line,key)&&line[length]=='='){g_string_append_printf(out,"%s=%s\n",key,value);found=TRUE;}else if(*line)g_string_append_printf(out,"%s\n",line);}
+  if(!found)g_string_append_printf(out,"%s=%s\n",key,value);
+  gboolean ok=g_file_set_contents(config->theme_file,out->str,-1,error);
+  g_string_free(out,TRUE);g_strfreev(lines);g_free(data);return ok;
+}
+
+gboolean wmd_hardware_set(WpdConfig *config,const gchar *mode,GError **error){
+  if(g_strcmp0(mode,"auto")&&g_strcmp0(mode,"on")&&g_strcmp0(mode,"off")){g_set_error(error,G_OPTION_ERROR,G_OPTION_ERROR_BAD_VALUE,"hardware must be auto, on, or off");return FALSE;}
+  if(!set_text_key(config,"hardware",mode,error))return FALSE;
+  g_free(config->hardware);config->hardware=g_strdup(mode);return TRUE;
 }
 
 static gint sane_int(const gchar *value, gint low, gint high, gint fallback) {

@@ -4,7 +4,7 @@ WMD (Wall Movie Daemon) is a lightweight native Wayland live-wallpaper daemon, b
 
 ## Status
 
-WMD 0.1.0 is the first usable branch release. It provides a persistent per-user daemon, native looping video playback, dropped-frame backpressure, WPD scaling modes, static-image fallback, state restoration, and the inherited wallpaper picker layouts. WPD remains maintained separately on `main` as the still-wallpaper daemon.
+WMD 0.2.0 provides a persistent per-user daemon, native looping video playback, configurable render FPS, dropped-frame backpressure, WPD scaling modes, static-image fallback, state restoration, and the inherited wallpaper picker layouts. It validates GStreamer preroll before accepting state and safely owns playback elements across replacement and failure. WPD remains maintained separately on `main` as the still-wallpaper daemon.
 
 ## Dependencies
 
@@ -36,11 +36,30 @@ Start WMD once from compositor startup:
 wmd daemon
 ```
 
+Set `WMD_FOREGROUND=1` to keep the daemon attached for systemd user services
+or diagnostics; normal invocation still detaches immediately.
+
 Play a looping live wallpaper:
 
 ```sh
 wmd video "/path/with spaces/ambient.webm" fill
 ```
+
+Set or inspect the render limit without restarting playback:
+
+```sh
+wmd --fps
+wmd --fps 30
+wmd --hardware auto
+wmd config
+```
+
+`wmd config` opens a dependency-free terminal UI. FPS and hardware mode are
+persisted in `switcher.conf` and sent to the running daemon immediately.
+Hardware modes are `auto` (prefer an available hardware decoder), `on` (require
+VA H.264 decoding), and `off` (force software decoding). Mode changes apply to
+the next video. WMD scales and rate-limits decoded frames before the app sink,
+and never copies frames larger than the largest connected output.
 
 Scaling modes are `fill` (default), `fit`, `stretch`, and `none`. A new `video` command replaces the current stream without restarting the daemon. Audio is discarded intentionally. End-of-stream seeks back to the beginning.
 
@@ -62,3 +81,12 @@ WMD uses independent paths so it cannot collide with WPD:
 - Runtime socket: `$XDG_RUNTIME_DIR/wmd/socket`
 
 The last video or image is restored when the daemon starts. WMD remains a wallpaper daemon: it is not a desktop shell, media player UI, panel, or widget framework.
+
+On Arch Linux, MP4 playback normally requires `gst-plugins-good` for the
+QuickTime/ISO demuxer and `gst-libav` or another H.264 decoder. WMD validates
+preroll before accepting a video, so missing codecs are reported by
+`wmd video` instead of being saved as a broken restore state.
+
+Intel hardware decode additionally requires `gst-plugin-va` and an appropriate
+VA driver such as `intel-media-driver`. Use `wmd --hardware on` to require it;
+WMD returns a clear error instead of silently falling back when unavailable.

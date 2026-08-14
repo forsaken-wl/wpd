@@ -5,6 +5,7 @@
 #include "image.h"
 #include "transitions.h"
 #include "collection.h"
+#include "tui.h"
 #include "gui/switcher.h"
 #include "gui/carousel.h"
 #include "gui/three_d.h"
@@ -17,6 +18,7 @@ static void help(void) {
   g_print("WMD %s - lightweight Wayland live wallpaper daemon\n\n"
           "Usage:\n"
           "  wmd daemon\n"
+          "  wmd config\n"
           "  wmd video PATH [fill|fit|stretch|none]\n"
           "  wmd image PATH [fill|fit|stretch|none]\n"
           "  wmd switcher\n"
@@ -36,8 +38,30 @@ static void help(void) {
           "  wmd --alpha\n"
           "  wmd help\n\n"
           "Options:\n"
+          "      --fps N   Get or set render FPS\n"
+          "      --hardware MODE  auto, on, or off\n"
           "  -h, --help     Show this help\n"
           "  -v, --version  Show version\n", WMD_VERSION);
+}
+
+static int set_fps(WpdConfig *config,int argc,char **argv){
+  if(argc==2){g_print("%u\n",config->fps);return 0;}
+  if(argc!=3){g_printerr("usage: wmd --fps [1-240]\n");return 2;}
+  gchar *end=NULL;guint64 fps=g_ascii_strtoull(argv[2],&end,10);GError *error=NULL;
+  if(!end||*end||!wmd_fps_set(config,fps,&error)){g_printerr("wmd: %s\n",
+    error?error->message:"invalid fps");g_clear_error(&error);return 2;}
+  gchar *request=g_strdup_printf("FPS\t%u",config->fps),*reply=NULL;
+  if(config->socket_path)wpd_ipc_send(config->socket_path,request,&reply,&error);
+  g_clear_error(&error);g_free(reply);g_free(request);g_print("fps: %u\n",config->fps);return 0;
+}
+
+static int set_hardware(WpdConfig *config,int argc,char **argv){
+  if(argc==2){g_print("%s\n",config->hardware);return 0;}
+  if(argc!=3){g_printerr("usage: wmd --hardware [auto|on|off]\n");return 2;}
+  GError *error=NULL;if(!wmd_hardware_set(config,argv[2],&error)){g_printerr("wmd: %s\n",error->message);g_clear_error(&error);return 2;}
+  gchar *request=g_strdup_printf("HARDWARE\t%s",config->hardware),*reply=NULL;
+  if(config->socket_path)wpd_ipc_send(config->socket_path,request,&reply,&error);
+  g_clear_error(&error);g_free(reply);g_free(request);g_print("hardware: %s (next video)\n",config->hardware);return 0;
 }
 
 static int gui_init(int *argc, char ***argv) {
@@ -81,7 +105,10 @@ int main(int argc, char **argv) {
   }
   WpdConfig *config = wpd_config_new();
   int result;
-  if (!g_strcmp0(argv[1],"--alpha")) {
+  if (!g_strcmp0(argv[1],"--fps")) result=set_fps(config,argc,argv);
+  else if(!g_strcmp0(argv[1],"--hardware"))result=set_hardware(config,argc,argv);
+  else if (!g_strcmp0(argv[1],"config")) result=argc==2?wmd_tui_run(config):2;
+  else if (!g_strcmp0(argv[1],"--alpha")) {
     if (argc!=2) result=2;
     else if (g_random_int_range(0,100)>=31) {
       g_print("wmd: alpha behaved itself this time\n"); result=0;
@@ -99,7 +126,7 @@ int main(int argc, char **argv) {
       if (running) {
         g_print("wmd: daemon already running\n"); result=0;
       } else {
-        int detached=wpd_daemon_detach(config);
+        int detached=g_getenv("WMD_FOREGROUND")?0:wpd_daemon_detach(config);
         if (detached>0) result=0;
         else if (detached<0) result=1;
         else {

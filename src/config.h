@@ -4,7 +4,7 @@
 
 typedef struct {
   gchar *config_dir, *papers_dir, *cache_dir, *state_dir, *runtime_dir;
-  gchar *socket_path, *state_file, *theme_file, *matugen_command, *transition;
+  gchar *socket_path, *state_file, *theme_file, *matugen_command, *transition,*hardware;
   guint duration_ms, fps;
 } WpdConfig;
 
@@ -20,3 +20,5 @@ void wpd_switcher_config_load(const WpdConfig *c, SwitcherConfig *out);
 const gchar *wpd_theme_get(const WpdConfig *c);
 gboolean wpd_theme_set(const WpdConfig *c, const gchar *theme, GError **error);
 gboolean wpd_transition_set(const WpdConfig *c, const gchar *transition, GError **error);
+gboolean wmd_fps_set(WpdConfig *c,guint fps,GError **error);
+gboolean wmd_hardware_set(WpdConfig *c,const gchar *mode,GError **error);
