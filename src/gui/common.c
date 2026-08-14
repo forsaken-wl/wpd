@@ -23,6 +23,7 @@ typedef struct {
   gint64 animation_last_frame;
   double animation_offset, animation_velocity;
   gchar *browse_dir;
+  gchar *status;
 } Ui;
 typedef struct { gchar *path, *cache; Item *item; } ThumbJob;
 typedef struct { gint index; double position; } RenderEntry;
@@ -149,22 +150,35 @@ static void load_collection_directory(Ui *ui,const gchar *directory) {
   gtk_widget_queue_draw(ui->area);
 }
 
+static void draw_status(cairo_t *cr,Ui *ui,gint width,gint height) {
+  if (!ui->status) return;
+  GdkRGBA accent=ui->style.selected_color;
+  cairo_set_source_rgba(cr,accent.red,accent.green,accent.blue,accent.alpha);
+  cairo_set_font_size(cr,14);cairo_text_extents_t extents;
+  cairo_text_extents(cr,ui->status,&extents);
+  cairo_move_to(cr,width/2-extents.width/2-extents.x_bearing,height-28);
+  cairo_show_text(cr,ui->status);
+}
+
 static void apply_selected(Ui *ui) {
   if (!ui->items->len) return;
   Item *item = g_ptr_array_index(ui->items, ui->selected);
   if (browses_collections(ui->kind) && item->directory) {
-    load_collection_directory(ui,item->path);return;
+    g_clear_pointer(&ui->status,g_free);load_collection_directory(ui,item->path);return;
   }
   GError *theme_error=NULL;
   wpd_collection_apply_theme_for_path(ui->config,item->path,&theme_error);
   if (theme_error) {g_printerr("wpd: %s\n",theme_error->message);g_clear_error(&theme_error);}
   gchar *request = g_strdup_printf("IMAGE\tfill\t%s", item->path);
   gchar *reply = NULL; GError *error = NULL;
-  if (!wpd_ipc_send(ui->config->socket_path, request, &reply, &error))
+  if (!wpd_ipc_send(ui->config->socket_path, request, &reply, &error)) {
     g_printerr("wpd: %s\n", error->message);
-  else if (!g_str_has_prefix(reply, "OK"))
+    g_free(ui->status);ui->status=g_strdup("Daemon unavailable — run: wpd daemon");
+    gtk_widget_queue_draw(ui->area);
+  } else if (!g_str_has_prefix(reply, "OK")) {
     g_printerr("wpd: %s\n", reply);
-  else
+    g_free(ui->status);ui->status=g_strdup(reply);gtk_widget_queue_draw(ui->area);
+  } else
     gtk_main_quit();
   g_clear_error(&error); g_free(reply); g_free(request);
 }
@@ -420,7 +434,8 @@ static gboolean draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
     cairo_move_to(cr,40,60);
     cairo_show_text(cr,browses_collections(ui->kind)?
       "This collection is empty — Backspace returns to its parent":
-      "No wallpapers in the WPD papers directory"); return FALSE;
+      "No wallpapers in the WPD papers directory");draw_status(cr,ui,area.width,area.height);
+    return FALSE;
   }
   if (browses_collections(ui->kind) && ui->kind!=WPD_GUI_SWITCHER) {
     const gchar *relative=ui->browse_dir+strlen(ui->config->papers_dir);
@@ -464,7 +479,7 @@ static gboolean draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
     cairo_set_source_rgba(cr,fg.red,fg.green,fg.blue,fg.alpha);
     cairo_set_font_size(cr,13);cairo_move_to(cr,panel_x+18,panel_y+panel_h-16);
     cairo_show_text(cr,page_text);g_free(page_text);g_free(name);
-    return FALSE;
+    draw_status(cr,ui,area.width,area.height);return FALSE;
   }
   if (ui->kind==WPD_GUI_3D) {
     double panel_w=MIN(area.width-80.0,1120.0), panel_h=ui->style.height*2.1;
@@ -585,7 +600,7 @@ static gboolean draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
     cairo_move_to(cr,panel_x+20,panel_y+panel_h-20);cairo_show_text(cr,name);
     cairo_set_source_rgba(cr,accent.red,accent.green,accent.blue,accent.alpha);
     cairo_move_to(cr,panel_x+panel_w-60,panel_y+panel_h-20);cairo_show_text(cr,status);
-    g_free(status);g_free(name);return FALSE;
+    g_free(status);g_free(name);draw_status(cr,ui,area.width,area.height);return FALSE;
   }
   double natural_w=4*ui->style.spacing+ui->style.side_width+76;
   double layout_scale=ui->kind==WPD_GUI_SWITCHER?
@@ -697,6 +712,7 @@ static gboolean draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
     g_free(position); g_free(name);
   }
   cairo_restore(cr);
+  draw_status(cr,ui,area.width,area.height);
   return FALSE;
 }
 
@@ -762,6 +778,12 @@ int wpd_gui_run(WpdConfig *config, WpdGuiKind kind) {
   wpd_switcher_config_load(config,&ui.style);
   g_mkdir_with_parents(config->cache_dir,0700);
   ui.items = g_ptr_array_new_with_free_func(item_unref);
+  if (config->socket_path) {
+    gchar *reply=NULL;GError *error=NULL;
+    if (!wpd_ipc_send(config->socket_path,"PING",&reply,&error))
+      ui.status=g_strdup("Daemon unavailable — run: wpd daemon");
+    g_free(reply);g_clear_error(&error);
+  } else ui.status=g_strdup("XDG_RUNTIME_DIR is unavailable");
   if (!browses_collections(kind)) {
     GPtrArray *paths=wpd_wallpapers_scan(config->papers_dir);
     for (guint i=0; i<paths->len; i++) {
@@ -814,6 +836,7 @@ int wpd_gui_run(WpdConfig *config, WpdGuiKind kind) {
   gtk_main();
   if (ui.animation_timer) g_source_remove(ui.animation_timer);
   g_object_set_data(G_OBJECT(ui.area),"wpd-ui",NULL);
-  gtk_widget_destroy(ui.window);g_free(ui.browse_dir);g_ptr_array_free(ui.items,TRUE);
+  gtk_widget_destroy(ui.window);g_free(ui.browse_dir);g_free(ui.status);
+  g_ptr_array_free(ui.items,TRUE);
   return 0;
 }

@@ -68,6 +68,8 @@ Collection cards use the Lucide folder icon geometry, rendered directly with Cai
 
 WPD 0.6.3 extends the same collection browser to `grid`, `filmstrip`, and `roots`. Enter or a second click opens a folder; Backspace moves up and Home returns to the papers root. Carousel, stack, and 3d deliberately retain their flat recursive view because folder navigation is unclear in continuously moving or depth-mapped layouts.
 
+Pickers check the daemon when they open and show an on-screen recovery hint if the runtime socket is stale or unavailable. Navigation remains usable offline; applying a paper succeeds once `wpd daemon` is running.
+
 The experimental WMD (Wall Movie Daemon) live-wallpaper work is kept on the separate `wmd` Git branch based on this release. WPD remains a still-wallpaper daemon.
 
 Switcher, carousel, and 3d apply wallpapers using `fill` by default. `wpd 3d` replaces the former concept experiments with a perspective-mapped carousel: cards recede, compress toward their far edge, scale by depth, overlap back-to-front, wrap around the library, and retain the selected wallpaper title. It supports mouse selection, Left/Right or `h`/`j`, Enter, scrolling, and Escape.
