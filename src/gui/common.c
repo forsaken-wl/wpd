@@ -27,6 +27,11 @@ typedef struct {
 typedef struct { gchar *path, *cache; Item *item; } ThumbJob;
 typedef struct { gint index; double position; } RenderEntry;
 
+static gboolean browses_collections(WpdGuiKind kind) {
+  return kind==WPD_GUI_SWITCHER || kind==WPD_GUI_GRID ||
+         kind==WPD_GUI_FILMSTRIP || kind==WPD_GUI_ROOTS;
+}
+
 static void quit_if_running(GtkWidget *widget,gpointer data) {
   (void)widget;(void)data;
   if (gtk_main_level()>0) gtk_main_quit();
@@ -113,7 +118,7 @@ static void request_thumb(Ui *ui, Item *item) {
   g_object_unref(task);
 }
 
-static void load_switcher_directory(Ui *ui,const gchar *directory) {
+static void load_collection_directory(Ui *ui,const gchar *directory) {
   /* The caller may pass a path owned by the currently selected item. Keep our
      own copy before clearing the array that owns that item. */
   gchar *target=g_strdup(directory);
@@ -147,8 +152,8 @@ static void load_switcher_directory(Ui *ui,const gchar *directory) {
 static void apply_selected(Ui *ui) {
   if (!ui->items->len) return;
   Item *item = g_ptr_array_index(ui->items, ui->selected);
-  if (ui->kind==WPD_GUI_SWITCHER && item->directory) {
-    load_switcher_directory(ui,item->path);return;
+  if (browses_collections(ui->kind) && item->directory) {
+    load_collection_directory(ui,item->path);return;
   }
   GError *theme_error=NULL;
   wpd_collection_apply_theme_for_path(ui->config,item->path,&theme_error);
@@ -212,14 +217,14 @@ static gboolean key_press(GtkWidget *widget, GdkEventKey *event, gpointer data) 
   else if (event->keyval == GDK_KEY_j) select_delta(ui,1);
   else if (event->keyval == GDK_KEY_Return || event->keyval == GDK_KEY_KP_Enter)
     apply_selected(ui);
-  else if (ui->kind==WPD_GUI_SWITCHER && event->keyval==GDK_KEY_BackSpace) {
+  else if (browses_collections(ui->kind) && event->keyval==GDK_KEY_BackSpace) {
     if (g_strcmp0(ui->browse_dir,ui->config->papers_dir)) {
       gchar *parent=g_path_get_dirname(ui->browse_dir);
-      load_switcher_directory(ui,parent);g_free(parent);
+      load_collection_directory(ui,parent);g_free(parent);
     }
   }
-  else if (ui->kind==WPD_GUI_SWITCHER && event->keyval==GDK_KEY_Home)
-    load_switcher_directory(ui,ui->config->papers_dir);
+  else if (browses_collections(ui->kind) && event->keyval==GDK_KEY_Home)
+    load_collection_directory(ui,ui->config->papers_dir);
   else if (event->keyval == GDK_KEY_Escape) gtk_main_quit();
   else return FALSE;
   return TRUE;
@@ -413,9 +418,19 @@ static gboolean draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
     cairo_set_source_rgba(cr,foreground.red,foreground.green,foreground.blue,
                           foreground.alpha);
     cairo_move_to(cr,40,60);
-    cairo_show_text(cr,ui->kind==WPD_GUI_SWITCHER?
+    cairo_show_text(cr,browses_collections(ui->kind)?
       "This collection is empty — Backspace returns to its parent":
       "No wallpapers in the WPD papers directory"); return FALSE;
+  }
+  if (browses_collections(ui->kind) && ui->kind!=WPD_GUI_SWITCHER) {
+    const gchar *relative=ui->browse_dir+strlen(ui->config->papers_dir);
+    while (*relative==G_DIR_SEPARATOR) relative++;
+    gchar *crumb=*relative?g_strdup_printf("Papers  /  %s",relative):g_strdup("Papers");
+    GdkRGBA foreground=ui->style.foreground_color;
+    cairo_set_source_rgba(cr,foreground.red,foreground.green,foreground.blue,
+                          foreground.alpha*.82);
+    cairo_set_font_size(cr,12);cairo_move_to(cr,32,40);cairo_show_text(cr,crumb);
+    g_free(crumb);
   }
   if (ui->kind==WPD_GUI_GRID) {
     gint columns=CLAMP(area.width/(ui->style.side_width+34),2,6);
@@ -641,7 +656,8 @@ static gboolean draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
     if (ui->kind==WPD_GUI_SWITCHER && index==ui->hovered && !selected)
       y-=5*layout_scale;
     paint_card(cr, g_ptr_array_index(ui->items,index), x,y,width,height,ui,selected);
-    if (selected && ui->kind == WPD_GUI_CAROUSEL) {
+    if (selected && (ui->kind == WPD_GUI_CAROUSEL ||
+                     ui->kind==WPD_GUI_FILMSTRIP)) {
       gchar *name = g_path_get_basename(((Item*)g_ptr_array_index(ui->items,index))->path);
       GdkRGBA foreground=ui->style.foreground_color;
       cairo_set_source_rgba(cr,foreground.red,foreground.green,foreground.blue,
@@ -746,7 +762,7 @@ int wpd_gui_run(WpdConfig *config, WpdGuiKind kind) {
   wpd_switcher_config_load(config,&ui.style);
   g_mkdir_with_parents(config->cache_dir,0700);
   ui.items = g_ptr_array_new_with_free_func(item_unref);
-  if (kind!=WPD_GUI_SWITCHER) {
+  if (!browses_collections(kind)) {
     GPtrArray *paths=wpd_wallpapers_scan(config->papers_dir);
     for (guint i=0; i<paths->len; i++) {
       Item *item=g_new0(Item,1); item->refs=1;
@@ -791,9 +807,9 @@ int wpd_gui_run(WpdConfig *config, WpdGuiKind kind) {
   g_signal_connect(ui.area,"leave-notify-event",G_CALLBACK(pointer_leave),&ui);
   g_signal_connect(ui.window,"key-press-event",G_CALLBACK(key_press),&ui);
   g_signal_connect(ui.window,"destroy",G_CALLBACK(quit_if_running),NULL);
-  if (kind==WPD_GUI_SWITCHER) load_switcher_directory(&ui,config->papers_dir);
+  if (browses_collections(kind)) load_collection_directory(&ui,config->papers_dir);
   gtk_widget_show_all(ui.window);
-  if (kind!=WPD_GUI_SWITCHER)
+  if (!browses_collections(kind))
     for (guint i=0;i<ui.items->len;i++) request_thumb(&ui,g_ptr_array_index(ui.items,i));
   gtk_main();
   if (ui.animation_timer) g_source_remove(ui.animation_timer);
