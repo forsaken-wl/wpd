@@ -1,4 +1,4 @@
-project('wpd', 'c', version: '0.4.8', default_options: ['c_std=c11', 'warning_level=2'])
+project('wpd', 'c', version: '0.4.9', default_options: ['c_std=c11', 'warning_level=2'])
 
 cc = meson.get_compiler('c')
 gtk = dependency('gtk+-3.0', version: '>=3.24')
@@ -14,7 +14,7 @@ sources = files(
   'src/main.c', 'src/config.c', 'src/ipc.c', 'src/image.c',
   'src/wallpaper.c', 'src/transitions.c', 'src/renderer.c', 'src/daemon.c',
   'src/gui/common.c', 'src/gui/switcher.c', 'src/gui/carousel.c',
-  'src/gui/concept.c', 'src/gui/concept_v2.c',
+  'src/gui/three_d.c',
 )
 
 executable('wpd', sources,

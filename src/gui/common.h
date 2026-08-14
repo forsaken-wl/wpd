@@ -1,4 +1,4 @@
 #pragma once
 #include "../config.h"
-typedef enum {WPD_GUI_SWITCHER,WPD_GUI_CAROUSEL,WPD_GUI_CONCEPT,WPD_GUI_CONCEPT_V2} WpdGuiKind;
+typedef enum {WPD_GUI_SWITCHER,WPD_GUI_CAROUSEL,WPD_GUI_3D} WpdGuiKind;
 int wpd_gui_run(WpdConfig *config,WpdGuiKind kind);

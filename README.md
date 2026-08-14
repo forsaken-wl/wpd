@@ -45,16 +45,13 @@ Change the wallpaper or open a picker with:
 wpd image "/path/with spaces/wallpaper.heic" fill
 wpd switcher
 wpd carousel
-wpd concept
-wpd concept-v2
+wpd 3d
 wpd theme light
 ```
 
 The daemon restores its last valid wallpaper. It uses one background layer-shell surface per monitor and is event-driven while idle.
 
-Switcher, carousel, and concept apply wallpapers using `fill` by default. `wpd concept` is a full-screen grid browser: use the mouse, arrow keys, or `h`/`j` to navigate, Enter to apply, and Escape to close. Clicking a selected grid item also applies it.
-
-`wpd concept-v2` is the experimental 3D carousel: cards recede with perspective, scale by depth, overlap back-to-front, wrap around the library, and retain the selected wallpaper title. It supports mouse selection, Left/Right or `h`/`j`, Enter, scrolling, and Escape.
+Switcher, carousel, and 3d apply wallpapers using `fill` by default. `wpd 3d` replaces the former concept experiments with a perspective-mapped carousel: cards recede, compress toward their far edge, scale by depth, overlap back-to-front, wrap around the library, and retain the selected wallpaper title. It supports mouse selection, Left/Right or `h`/`j`, Enter, scrolling, and Escape.
 
 In 0.4.3-ng, the experimental `refine` layout was merged into the default switcher and the standalone command was removed. The switcher now uses the emphasized center-card layout with five visible cards and a compact rounded band.
 

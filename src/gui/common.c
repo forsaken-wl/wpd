@@ -146,25 +146,6 @@ static void select_delta(Ui *ui, gint delta) {
 
 static gboolean key_press(GtkWidget *widget, GdkEventKey *event, gpointer data) {
   (void)widget; Ui *ui = data;
-  if (ui->kind==WPD_GUI_CONCEPT) {
-    GtkAllocation area; gtk_widget_get_allocation(ui->area,&area);
-    gint cell_width=MAX(120,ui->style.side_width)+28;
-    gint columns=MAX(1,(area.width-60)/cell_width);
-    gint delta=0;
-    if (event->keyval==GDK_KEY_Left || event->keyval==GDK_KEY_h) delta=-1;
-    else if (event->keyval==GDK_KEY_Right || event->keyval==GDK_KEY_j) delta=1;
-    else if (event->keyval==GDK_KEY_Up || event->keyval==GDK_KEY_k) delta=-columns;
-    else if (event->keyval==GDK_KEY_Down || event->keyval==GDK_KEY_l) delta=columns;
-    else if (event->keyval==GDK_KEY_Return || event->keyval==GDK_KEY_KP_Enter)
-      apply_selected(ui);
-    else if (event->keyval==GDK_KEY_Escape) gtk_main_quit();
-    else return FALSE;
-    if (delta) {
-      ui->selected=CLAMP(ui->selected+delta,0,(gint)ui->items->len-1);
-      gtk_widget_queue_draw(ui->area);
-    }
-    return TRUE;
-  }
   if (event->keyval == GDK_KEY_Left) select_delta(ui, -1);
   else if (event->keyval == GDK_KEY_Right) select_delta(ui, 1);
   else if (event->keyval == GDK_KEY_h) select_delta(ui,-1);
@@ -180,10 +161,7 @@ static gboolean scroll(GtkWidget *widget, GdkEventScroll *event, gpointer data) 
   (void)widget;
   Ui *ui=data;
   gint delta=event->direction==GDK_SCROLL_UP || event->delta_y<0 ? -1 : 1;
-  if (ui->kind==WPD_GUI_CONCEPT) {
-    ui->selected=CLAMP(ui->selected+delta,0,(gint)ui->items->len-1);
-    gtk_widget_queue_draw(ui->area);
-  } else select_delta(ui,delta);
+  select_delta(ui,delta);
   return TRUE;
 }
 
@@ -255,26 +233,48 @@ static void paint_3d_card(cairo_t *cr,Item *item,double x,double y,double w,doub
   GdkRGBA shadow=ui->style.shadow_color;
   cairo_set_source_rgba(cr,shadow.red,shadow.green,shadow.blue,shadow.alpha);
   cairo_fill(cr);
-  perspective_path(cr,x,y,w,h,tilt); cairo_save(cr); cairo_clip(cr);
   if (item->thumb) {
     double sw=cairo_image_surface_get_width(item->thumb);
     double sh=cairo_image_surface_get_height(item->thumb);
-    double scale=MAX(w/sw,h/sh);
-    cairo_translate(cr,x+(w-sw*scale)/2,y+(h-sh*scale)/2);
-    cairo_scale(cr,scale,scale); cairo_set_source_surface(cr,item->thumb,0,0);
-    cairo_pattern_set_filter(cairo_get_source(cr),CAIRO_FILTER_BILINEAR);
-    cairo_pattern_set_extend(cairo_get_source(cr),CAIRO_EXTEND_PAD); cairo_paint(cr);
+    double crop_scale=MAX(w/sw,h/sh);
+    double crop_w=w/crop_scale, crop_h=h/crop_scale;
+    double source_x=(sw-crop_w)/2, source_y=(sh-crop_h)/2;
+    double inset=MIN(h*.28,fabs(tilt)*h*.22);
+    const gint strips=48;
+    for (gint strip=0;strip<strips;strip++) {
+      double t0=(double)strip/strips, t1=(double)(strip+1)/strips;
+      double top0=tilt<0?inset*(1-t0):inset*t0;
+      double top1=tilt<0?inset*(1-t1):inset*t1;
+      double bottom0=h-top0, bottom1=h-top1;
+      double x0=x+w*t0, x1=x+w*t1;
+      cairo_save(cr);
+      cairo_set_antialias(cr,CAIRO_ANTIALIAS_NONE);
+      cairo_move_to(cr,x0,y+top0);
+      cairo_line_to(cr,x1,y+top1); cairo_line_to(cr,x1,y+bottom1);
+      cairo_line_to(cr,x0,y+bottom0); cairo_close_path(cr); cairo_clip(cr);
+      double middle=(t0+t1)/2;
+      double top_middle=tilt<0?inset*(1-middle):inset*middle;
+      double strip_height=h-2*top_middle;
+      double sx0=source_x+crop_w*t0, sx1=source_x+crop_w*t1;
+      cairo_translate(cr,x0,y+top_middle);
+      cairo_scale(cr,(x1-x0)/(sx1-sx0),strip_height/crop_h);
+      cairo_set_source_surface(cr,item->thumb,-sx0,-source_y);
+      cairo_pattern_set_filter(cairo_get_source(cr),CAIRO_FILTER_BILINEAR);
+      cairo_pattern_set_extend(cairo_get_source(cr),CAIRO_EXTEND_PAD);
+      cairo_paint(cr); cairo_restore(cr);
+    }
   } else {
+    perspective_path(cr,x,y,w,h,tilt); cairo_save(cr); cairo_clip(cr);
     GdkRGBA background=ui->style.background_color;
     cairo_set_source_rgba(cr,background.red,background.green,background.blue,1);
-    cairo_paint(cr);
+    cairo_paint(cr); cairo_restore(cr);
   }
-  cairo_restore(cr);
   if (!selected && ui->style.dim>0) {
     perspective_path(cr,x,y,w,h,tilt);
     cairo_set_source_rgba(cr,0,0,0,ui->style.dim/100.0); cairo_fill(cr);
   }
   perspective_path(cr,x,y,w,h,tilt); cairo_set_line_width(cr,ui->style.border);
+  cairo_set_line_join(cr,CAIRO_LINE_JOIN_ROUND);
   GdkRGBA line=selected?ui->style.selected_color:ui->style.border_color;
   cairo_set_source_rgba(cr,line.red,line.green,line.blue,line.alpha); cairo_stroke(cr);
 }
@@ -290,43 +290,7 @@ static gboolean draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
     cairo_move_to(cr,40,60);
     cairo_show_text(cr, "No wallpapers in the WPD papers directory"); return FALSE;
   }
-  if (ui->kind==WPD_GUI_CONCEPT) {
-    if (ui->style.band) {
-      GdkRGBA background=ui->style.background_color;
-      cairo_set_source_rgba(cr,background.red,background.green,background.blue,
-                            background.alpha); cairo_paint(cr);
-    }
-    double card_width=MAX(120,ui->style.side_width);
-    double card_height=ui->style.height;
-    double gap=28, top=42, label_height=24;
-    gint columns=MAX(1,(gint)((area.width-60)/(card_width+gap)));
-    gint visible_rows=MAX(1,(gint)((area.height-top-32)/(card_height+label_height+gap)));
-    gint selected_row=ui->selected/columns;
-    gint first_row=MAX(0,selected_row-visible_rows/2);
-    gint total_rows=((gint)ui->items->len+columns-1)/columns;
-    first_row=MIN(first_row,MAX(0,total_rows-visible_rows));
-    double grid_width=columns*card_width+(columns-1)*gap;
-    double start_x=(area.width-grid_width)/2;
-    for (gint row=first_row;row<MIN(total_rows,first_row+visible_rows);row++) {
-      for (gint column=0;column<columns;column++) {
-        gint index=row*columns+column;
-        if (index>=(gint)ui->items->len) break;
-        double x=start_x+column*(card_width+gap);
-        double y=top+(row-first_row)*(card_height+label_height+gap);
-        paint_card(cr,g_ptr_array_index(ui->items,index),x,y,card_width,card_height,
-                   ui,index==ui->selected);
-        gchar *name=g_path_get_basename(((Item*)g_ptr_array_index(ui->items,index))->path);
-        GdkRGBA foreground=ui->style.foreground_color;
-        cairo_set_source_rgba(cr,foreground.red,foreground.green,foreground.blue,
-                              foreground.alpha);
-        cairo_set_font_size(cr,13); cairo_move_to(cr,x,y+card_height+18);
-        cairo_save(cr); cairo_rectangle(cr,x,y+card_height,card_width,label_height);
-        cairo_clip(cr); cairo_show_text(cr,name); cairo_restore(cr); g_free(name);
-      }
-    }
-    return FALSE;
-  }
-  if (ui->kind==WPD_GUI_CONCEPT_V2) {
+  if (ui->kind==WPD_GUI_3D) {
     double panel_w=MIN(area.width-80.0,1120.0), panel_h=ui->style.height*2.1;
     double panel_x=(area.width-panel_w)/2, panel_y=(area.height-panel_h)/2;
     if (ui->style.band) {
@@ -435,31 +399,7 @@ static gboolean draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
 
 static gboolean click(GtkWidget *widget, GdkEventButton *event, gpointer data) {
   Ui *ui = data; GtkAllocation area; gtk_widget_get_allocation(widget, &area);
-  if (ui->kind==WPD_GUI_CONCEPT) {
-    double card_width=MAX(120,ui->style.side_width), card_height=ui->style.height;
-    double gap=28, top=42, label_height=24;
-    gint columns=MAX(1,(gint)((area.width-60)/(card_width+gap)));
-    gint visible_rows=MAX(1,(gint)((area.height-top-32)/(card_height+label_height+gap)));
-    gint selected_row=ui->selected/columns;
-    gint total_rows=((gint)ui->items->len+columns-1)/columns;
-    gint first_row=MIN(MAX(0,selected_row-visible_rows/2),MAX(0,total_rows-visible_rows));
-    double grid_width=columns*card_width+(columns-1)*gap;
-    double start_x=(area.width-grid_width)/2;
-    gint column=(gint)((event->x-start_x)/(card_width+gap));
-    gint row=(gint)((event->y-top)/(card_height+label_height+gap));
-    if (column>=0 && column<columns && row>=0 && row<visible_rows) {
-      double local_x=event->x-(start_x+column*(card_width+gap));
-      double local_y=event->y-(top+row*(card_height+label_height+gap));
-      gint index=(first_row+row)*columns+column;
-      if (local_x<=card_width && local_y<=card_height &&
-          index<(gint)ui->items->len) {
-        if (index==ui->selected) apply_selected(ui);
-        else { ui->selected=index; gtk_widget_queue_draw(ui->area); }
-      }
-    }
-    return TRUE;
-  }
-  if (ui->kind==WPD_GUI_CONCEPT_V2) {
+  if (ui->kind==WPD_GUI_3D) {
     gint count=(gint)ui->items->len, closest=0; double best=G_MAXDOUBLE;
     double offset=ui->animation_offset/ui->style.spacing;
     for (gint distance=-MIN(3,count);distance<=MIN(3,count);distance++) {
@@ -509,8 +449,7 @@ int wpd_gui_run(WpdConfig *config, WpdGuiKind kind) {
   gtk_layer_set_exclusive_zone(GTK_WINDOW(ui.window),0);
   gtk_layer_set_keyboard_mode(GTK_WINDOW(ui.window),GTK_LAYER_SHELL_KEYBOARD_MODE_EXCLUSIVE);
   gtk_layer_set_namespace(GTK_WINDOW(ui.window),kind==WPD_GUI_SWITCHER?"wpd-switcher":
-    kind==WPD_GUI_CAROUSEL?"wpd-carousel":kind==WPD_GUI_CONCEPT?"wpd-concept":
-    "wpd-concept-v2");
+    kind==WPD_GUI_CAROUSEL?"wpd-carousel":"wpd-3d");
   ui.area=gtk_drawing_area_new();
   gtk_widget_set_app_paintable(ui.area,TRUE);
   GtkCssProvider *css=gtk_css_provider_new();

@@ -5,8 +5,7 @@
 #include "image.h"
 #include "gui/switcher.h"
 #include "gui/carousel.h"
-#include "gui/concept.h"
-#include "gui/concept_v2.h"
+#include "gui/three_d.h"
 #include <gtk/gtk.h>
 
 static void help(void) {
@@ -16,8 +15,7 @@ static void help(void) {
           "  wpd image PATH [fill|fit|stretch|none]\n"
           "  wpd switcher\n"
           "  wpd carousel\n"
-          "  wpd concept\n"
-          "  wpd concept-v2\n"
+          "  wpd 3d\n"
           "  wpd theme [light|dark]\n"
           "  wpd help\n\n"
           "Options:\n"
@@ -101,13 +99,12 @@ int main(int argc, char **argv) {
       g_printerr("usage: wpd theme [light|dark]\n"); result=2;
     }
   } else if (!g_strcmp0(argv[1], "switcher") || !g_strcmp0(argv[1], "carousel") ||
-             !g_strcmp0(argv[1], "concept") || !g_strcmp0(argv[1], "concept-v2")) {
+             !g_strcmp0(argv[1], "3d")) {
     result = argc != 2 ? 2 : gui_init(&argc, &argv);
     if (!result) {
       if (!g_strcmp0(argv[1],"switcher")) result=wpd_switcher_run(config);
       else if (!g_strcmp0(argv[1],"carousel")) result=wpd_carousel_run(config);
-      else if (!g_strcmp0(argv[1],"concept")) result=wpd_concept_run(config);
-      else result=wpd_concept_v2_run(config);
+      else result=wpd_three_d_run(config);
     }
   } else {
     g_printerr("wpd: unknown command '%s'\nTry 'wpd help'.\n", argv[1]);
