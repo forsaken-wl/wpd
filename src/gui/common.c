@@ -16,6 +16,7 @@ typedef struct {
   GtkWidget *window, *area;
   GPtrArray *items;
   gint selected;
+  gint hovered;
   SwitcherConfig style;
   guint animation_timer;
   gint64 animation_last_frame;
@@ -162,6 +163,27 @@ static gboolean scroll(GtkWidget *widget, GdkEventScroll *event, gpointer data) 
   Ui *ui=data;
   gint delta=event->direction==GDK_SCROLL_UP || event->delta_y<0 ? -1 : 1;
   select_delta(ui,delta);
+  return TRUE;
+}
+
+static gboolean pointer_motion(GtkWidget *widget,GdkEventMotion *event,gpointer data) {
+  Ui *ui=data;
+  if (ui->kind!=WPD_GUI_SWITCHER || !ui->items->len) return FALSE;
+  GtkAllocation area;gtk_widget_get_allocation(widget,&area);
+  double natural=4*ui->style.spacing+ui->style.side_width+76;
+  double scale=CLAMP((area.width-48.0)/natural,.35,1.0);
+  double spacing=ui->style.spacing*scale;
+  gint distance=(gint)round((event->x-area.width/2-ui->animation_offset*scale)/spacing);
+  gint previous=ui->hovered;
+  ui->hovered=distance>=-2&&distance<=2?
+    (ui->selected+distance+(gint)ui->items->len)%(gint)ui->items->len:-1;
+  if (previous!=ui->hovered) gtk_widget_queue_draw(ui->area);
+  return TRUE;
+}
+
+static gboolean pointer_leave(GtkWidget *widget,GdkEventCrossing *event,gpointer data) {
+  (void)widget;(void)event;Ui *ui=data;
+  if (ui->hovered>=0){ui->hovered=-1;gtk_widget_queue_draw(ui->area);}
   return TRUE;
 }
 
@@ -337,15 +359,23 @@ static gboolean draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
     }
     g_free(entries); cairo_restore(cr); return FALSE;
   }
-  double deck_w = 4*ui->style.spacing+ui->style.side_width+76;
-  double deck_h = ui->style.height+28;
+  double natural_w=4*ui->style.spacing+ui->style.side_width+76;
+  double layout_scale=ui->kind==WPD_GUI_SWITCHER?
+    CLAMP((area.width-48.0)/natural_w,.35,1.0):1.0;
+  double spacing=ui->style.spacing*layout_scale;
+  double deck_w=natural_w*layout_scale;
+  double deck_h=(ui->style.height+62)*layout_scale;
   double deck_x = (area.width-deck_w)/2, deck_y = (area.height-deck_h)/2;
   if (ui->kind == WPD_GUI_SWITCHER && ui->style.band) {
     cairo_rectangle(cr,deck_x,deck_y,deck_w,deck_h);
     GdkRGBA background=ui->style.background_color;
     cairo_set_source_rgba(cr,background.red,background.green,background.blue,
                           background.alpha);
-    cairo_fill(cr);
+    cairo_fill_preserve(cr);
+    GdkRGBA accent=ui->style.selected_color;
+    cairo_set_source_rgba(cr,accent.red,accent.green,accent.blue,accent.alpha*.7);
+    cairo_set_line_width(cr,MAX(1.0,ui->style.border));
+    cairo_stroke(cr);
   }
   cairo_save(cr);
   if (ui->kind == WPD_GUI_SWITCHER) {
@@ -372,15 +402,17 @@ static gboolean draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
     if (fabs(position)>base_range+1.5) continue;
     double focus = 1.0-MIN(1.0,fabs(position));
     gboolean selected = focus > .5;
-    double width = ui->style.side_width +
-      (ui->style.selected_width-ui->style.side_width)*focus;
-    double height = ui->style.height;
+    double width = (ui->style.side_width +
+      (ui->style.selected_width-ui->style.side_width)*focus)*layout_scale;
+    double height = ui->style.height*layout_scale;
     if (ui->kind == WPD_GUI_CAROUSEL) {
       double scale = .55 + 1.20*focus;
       width = ui->style.selected_width * scale; height *= scale;
     }
-    double x = area.width/2.0 + position*ui->style.spacing - width/2;
+    double x = area.width/2.0 + position*spacing - width/2;
     double y = area.height/2.0 - height/2;
+    if (ui->kind==WPD_GUI_SWITCHER && index==ui->hovered && !selected)
+      y-=5*layout_scale;
     paint_card(cr, g_ptr_array_index(ui->items,index), x,y,width,height,ui,selected);
     if (selected && ui->kind == WPD_GUI_CAROUSEL) {
       gchar *name = g_path_get_basename(((Item*)g_ptr_array_index(ui->items,index))->path);
@@ -393,6 +425,32 @@ static gboolean draw(GtkWidget *widget, cairo_t *cr, gpointer data) {
     }
   }
   g_free(entries);
+  if (ui->kind==WPD_GUI_SWITCHER) {
+    Item *chosen=g_ptr_array_index(ui->items,ui->selected);
+    gchar *name=g_path_get_basename(chosen->path);
+    GdkRGBA foreground=ui->style.foreground_color;
+    GdkRGBA accent=ui->style.selected_color;
+    cairo_text_extents_t extents;
+    cairo_set_font_size(cr,MAX(10.0,14*layout_scale));
+    cairo_text_extents(cr,name,&extents);
+    cairo_set_source_rgba(cr,foreground.red,foreground.green,foreground.blue,
+                          foreground.alpha);
+    double label_y=deck_y+deck_h-12*layout_scale;
+    cairo_move_to(cr,area.width/2-extents.width/2-extents.x_bearing,label_y);
+    cairo_show_text(cr,name);
+    gchar *position=g_strdup_printf("%d / %u",ui->selected+1,ui->items->len);
+    cairo_set_font_size(cr,MAX(9.0,11*layout_scale));
+    cairo_text_extents(cr,position,&extents);
+    cairo_set_source_rgba(cr,accent.red,accent.green,accent.blue,accent.alpha);
+    cairo_move_to(cr,deck_x+deck_w-12*layout_scale-extents.width-extents.x_bearing,
+                  label_y);
+    cairo_show_text(cr,position);
+    cairo_set_line_width(cr,2*layout_scale);
+    cairo_move_to(cr,area.width/2-28*layout_scale,label_y+6*layout_scale);
+    cairo_line_to(cr,area.width/2+28*layout_scale,label_y+6*layout_scale);
+    cairo_stroke(cr);
+    g_free(position); g_free(name);
+  }
   cairo_restore(cr);
   return FALSE;
 }
@@ -414,9 +472,13 @@ static gboolean click(GtkWidget *widget, GdkEventButton *event, gpointer data) {
   }
   gint range = ui->kind == WPD_GUI_SWITCHER ? 2 : 3, closest = 0;
   double best = G_MAXDOUBLE;
+  double natural=4*ui->style.spacing+ui->style.side_width+76;
+  double scale=ui->kind==WPD_GUI_SWITCHER?
+    CLAMP((area.width-48.0)/natural,.35,1.0):1.0;
+  double spacing=ui->style.spacing*scale;
   for (gint distance=-range; distance<=range; distance++) {
-    double delta = fabs(event->x-(area.width/2.0+distance*ui->style.spacing+
-                                  ui->animation_offset));
+    double delta = fabs(event->x-(area.width/2.0+distance*spacing+
+                                  ui->animation_offset*scale));
     if (delta < best) { best = delta; closest = distance; }
   }
   if (!closest) apply_selected(ui); else select_delta(ui, closest);
@@ -424,7 +486,7 @@ static gboolean click(GtkWidget *widget, GdkEventButton *event, gpointer data) {
 }
 
 int wpd_gui_run(WpdConfig *config, WpdGuiKind kind) {
-  Ui ui = {0}; ui.config=config; ui.kind=kind;
+  Ui ui = {0}; ui.config=config; ui.kind=kind; ui.hovered=-1;
   wpd_switcher_config_load(config,&ui.style);
   g_mkdir_with_parents(config->cache_dir,0700);
   GPtrArray *paths = wpd_wallpapers_scan(config->papers_dir);
@@ -461,10 +523,13 @@ int wpd_gui_run(WpdConfig *config, WpdGuiKind kind) {
     GTK_STYLE_PROVIDER(css),GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
   g_object_unref(css);
   gtk_container_add(GTK_CONTAINER(ui.window),ui.area);
-  gtk_widget_add_events(ui.area,GDK_SCROLL_MASK|GDK_BUTTON_PRESS_MASK);
+  gtk_widget_add_events(ui.area,GDK_SCROLL_MASK|GDK_BUTTON_PRESS_MASK|
+                        GDK_POINTER_MOTION_MASK|GDK_LEAVE_NOTIFY_MASK);
   g_signal_connect(ui.area,"draw",G_CALLBACK(draw),&ui);
   g_signal_connect(ui.area,"scroll-event",G_CALLBACK(scroll),&ui);
   g_signal_connect(ui.area,"button-press-event",G_CALLBACK(click),&ui);
+  g_signal_connect(ui.area,"motion-notify-event",G_CALLBACK(pointer_motion),&ui);
+  g_signal_connect(ui.area,"leave-notify-event",G_CALLBACK(pointer_leave),&ui);
   g_signal_connect(ui.window,"key-press-event",G_CALLBACK(key_press),&ui);
   g_signal_connect(ui.window,"destroy",G_CALLBACK(gtk_main_quit),NULL);
   gtk_widget_show_all(ui.window);

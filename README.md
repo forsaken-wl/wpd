@@ -53,6 +53,8 @@ The daemon restores its last valid wallpaper. It uses one background layer-shell
 
 Switcher, carousel, and 3d apply wallpapers using `fill` by default. `wpd 3d` replaces the former concept experiments with a perspective-mapped carousel: cards recede, compress toward their far edge, scale by depth, overlap back-to-front, wrap around the library, and retain the selected wallpaper title. It supports mouse selection, Left/Right or `h`/`j`, Enter, scrolling, and Escape.
 
+The 1.1 switcher scales its deck to narrow outputs, adds pointer hover lift, frames the band with Matugen colors, and shows the selected filename and library position beneath the cards.
+
 In 0.4.3-ng, the experimental `refine` layout was merged into the default switcher and the standalone command was removed. The switcher now uses the emphasized center-card layout with five visible cards and a compact rounded band.
 
 0.4.4 restores continuous carousel-style picker navigation, supports both `background=band` and a truly alpha-transparent `background=transparent`, and always initializes daemon surfaces before presenting them to prevent a white background or startup flash. The former `-ng` rebuild is now the main WPD line.
